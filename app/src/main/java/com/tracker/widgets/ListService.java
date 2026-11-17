@@ -88,6 +88,15 @@ public class ListService extends RemoteViewsService {
                 JSONObject h = w.optJSONObject("h");
                 JSONArray f = h != null ? h.optJSONArray("foods") : null;
                 for (int i = f == null ? -1 : f.length() - 1; i >= 0; i--) if (f.optJSONArray(i) != null) rows.add(f.optJSONArray(i));
+            } else if (kind.equals("health")) {
+                for (String page : new String[]{"today", "log", "week"}) rows.add(new JSONArray().put(page));
+            } else if (kind.equals("days")) {
+                JSONObject sd = w.optJSONObject("s");
+                if (sd != null) {
+                    try { rows.add(new JSONArray().put(new JSONObject().put("date", sd.optString("date")).put("me", sd.optJSONArray("me")).put("mi", sd.optJSONArray("mi")))); } catch (Exception ignored) {}
+                    JSONArray days = sd.optJSONArray("days");
+                    for (int i = 0; days != null && i < days.length(); i++) if (days.optJSONObject(i) != null) rows.add(new JSONArray().put(days.optJSONObject(i)));
+                }
             } else if (kind.equals("acct")) {
                 JSONObject m = w.optJSONObject("m");
                 JSONArray a = m != null ? m.optJSONArray("acc") : null;
@@ -114,7 +123,121 @@ public class ListService extends RemoteViewsService {
             if (kind.equals("inbox")) return inbox(r);
             if (kind.equals("acct")) return account(r.optJSONObject(0));
             if (kind.equals("foods")) return food(r);
+            if (kind.equals("health")) return healthPage(r.optString(0));
+            if (kind.equals("days")) return dayPage(r.optJSONObject(0), pos, rows.size());
             return event(r);
+        }
+
+        /** Space left for a page: the widget's size minus its header, buttons and the page's own title, in dp. */
+        int[] pageDp(int reserved) {
+            int[] sz = Widgets.sizeDp(c, wid);
+            return new int[]{Math.max(150, sz[0] - 46), Math.max(90, sz[1] - Math.round(reserved * k))};
+        }
+
+        /** One day, drawn like the Tracker's Schedule grid (today with the now line). */
+        RemoteViews dayPage(JSONObject day, int pos, int count) {
+            RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.item_day);
+            java.time.LocalDate date;
+            try { date = java.time.LocalDate.parse(day.optString("date")); } catch (Exception e) { date = java.time.LocalDate.now(); }
+            boolean today = date.equals(java.time.LocalDate.now());
+            String name = today ? "TODAY" : date.equals(java.time.LocalDate.now().plusDays(1)) ? "TOMORROW" : date.format(java.time.format.DateTimeFormatter.ofPattern("EEEE", java.util.Locale.US)).toUpperCase(java.util.Locale.US);
+            v.setTextViewText(R.id.page_title, name + " · " + date.format(java.time.format.DateTimeFormatter.ofPattern("EEE M/d", java.util.Locale.US)).toUpperCase(java.util.Locale.US));
+            v.setTextViewText(R.id.page_hint, (pos + 1) + "/" + count + "  swipe ↕");
+            Widgets.ts(v, R.id.page_title, 14, k);
+            int now = java.time.LocalTime.now().getHour() * 60 + java.time.LocalTime.now().getMinute();
+            int[] p = pageDp(190);
+            float dens = Math.min(1.5f, c.getResources().getDisplayMetrics().density);
+            v.setImageViewBitmap(R.id.day_img, Timeline.draw(day.optJSONArray("me"), day.optJSONArray("mi"), today ? now : -1,
+                    Math.round(p[0] * dens), Math.round(p[1] * dens), dens, k));
+            v.setOnClickFillInIntent(R.id.page, new Intent());
+            return v;
+        }
+
+        /** Health's pages: Today (food bars), Food log, This week. */
+        RemoteViews healthPage(String page) {
+            JSONObject w = WidgetData.w(c), h = w.optJSONObject("h");
+            java.util.Map<String, String> d = WidgetData.load(c);
+            RemoteViews v;
+            if (page.equals("log")) {
+                v = new RemoteViews(c.getPackageName(), R.layout.item_health_log);
+                v.setTextViewText(R.id.page_title, "FOOD LOG");
+                v.setTextViewText(R.id.page_hint, "2/3  swipe ↕");
+                android.text.SpannableStringBuilder b = new android.text.SpannableStringBuilder();
+                for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) logLine(b, "", "⏳ Photo, read when the Tracker opens", -1, -1);
+                for (JSONObject e : Phone.pendingOf(c, "food")) logLine(b, e.optString("hm"), "⏳ " + e.optString("text"), -1, -1);
+                JSONArray f = h != null ? h.optJSONArray("foods") : null;
+                int total = 0;
+                for (int i = f == null ? -1 : f.length() - 1; i >= 0; i--) {
+                    JSONArray x = f.optJSONArray(i);
+                    if (x == null) continue;
+                    logLine(b, x.optString(2), x.optString(0), x.optInt(1, -1), x.optInt(3, -1));
+                    total += Math.max(0, x.optInt(1, 0));
+                }
+                v.setTextViewText(R.id.log_text, b.length() == 0 ? "Nothing logged today yet." : b);
+                v.setTextViewText(R.id.log_total, f == null || f.length() == 0 ? "" : f.length() + (f.length() == 1 ? " food" : " foods") + " · " + Widgets.fmt(total) + " kcal");
+                Widgets.ts(v, R.id.log_text, 12.5f, k);
+                Widgets.ts(v, R.id.log_total, 11, k);
+            } else if (page.equals("week")) {
+                v = new RemoteViews(c.getPackageName(), R.layout.item_health_week);
+                v.setTextViewText(R.id.page_title, "THIS WEEK");
+                v.setTextViewText(R.id.page_hint, "3/3  swipe ↕");
+                int[] p = pageDp(170);
+                float dens = Math.min(1.5f, c.getResources().getDisplayMetrics().density);
+                v.setImageViewBitmap(R.id.week_img, WeekChart.draw(h != null ? h.optJSONArray("week") : null, Math.round(p[0] * dens), Math.round(p[1] * dens), dens, k));
+            } else {
+                v = new RemoteViews(c.getPackageName(), R.layout.item_health_today);
+                v.setTextViewText(R.id.page_title, "TODAY");
+                v.setTextViewText(R.id.page_hint, "1/3  swipe ↕");
+                Double kcal = h != null ? Widgets.opt(h, "kcal") : Widgets.num(d.get("kcal")), kcalT = h != null ? Widgets.opt(h, "kcalT") : Widgets.num(d.get("kcal_target"));
+                Double p = h != null ? Widgets.opt(h, "p") : Widgets.num(d.get("protein")), pT = h != null ? Widgets.opt(h, "pT") : Widgets.num(d.get("protein_target"));
+                Double water = h != null ? Widgets.opt(h, "water") : Widgets.num(d.get("water_oz")), waterG = h != null ? Widgets.opt(h, "waterG") : Widgets.num(d.get("water_goal_oz"));
+                double addW = Phone.pendingWater(c);
+                if (addW > 0) water = (water == null ? 0 : water) + addW;
+                Double carbs = h != null ? Widgets.opt(h, "c") : null, carbsT = h != null ? Widgets.opt(h, "cT") : null;
+                Double fat = h != null ? Widgets.opt(h, "f") : null, fatT = h != null ? Widgets.opt(h, "fT") : null;
+                Widgets.macro(v, R.id.bar_k_b, R.id.bar_k_g, R.id.bar_k_o, R.id.val_k, kcal, kcalT, "kcal", "kcal");
+                Widgets.macro(v, R.id.bar_p_b, R.id.bar_p_g, R.id.bar_p_o, R.id.val_p, p, pT, "g", "p");
+                Widgets.macro(v, R.id.bar_c_b, R.id.bar_c_g, R.id.bar_c_o, R.id.val_c, carbs, carbsT, "g", "c");
+                Widgets.macro(v, R.id.bar_f_b, R.id.bar_f_g, R.id.bar_f_o, R.id.val_f, fat, fatT, "g", "f");
+                v.setProgressBar(R.id.bar_w_b, 100, water != null && waterG != null && waterG > 0 ? (int) Math.round(Math.min(1, water / waterG) * 100) : 0, false);
+                v.setTextViewText(R.id.val_w, Widgets.amount(water, waterG, "oz"));
+                String left = "";
+                if (kcal != null && kcalT != null && kcalT > 0)
+                    left = kcal < kcalT ? Widgets.fmt(kcalT - kcal) + " kcal and " + Widgets.fmt(Math.max(0, (pT == null ? 0 : pT) - (p == null ? 0 : p))) + " g protein left" : "Calorie target reached";
+                v.setTextViewText(R.id.left_text, left);
+                Double caf = h != null ? Widgets.opt(h, "caf") : Widgets.num(d.get("caffeine_mg"));
+                v.setTextViewText(R.id.caf_text, "☕ " + (caf == null ? "–" : Widgets.fmt(caf)) + " / 400 mg caffeine");
+                for (int id : new int[]{R.id.lbl_k, R.id.lbl_p, R.id.lbl_c, R.id.lbl_f, R.id.lbl_w}) Widgets.ts(v, id, 12.5f, k);
+                for (int id : new int[]{R.id.val_k, R.id.val_p, R.id.val_c, R.id.val_f, R.id.val_w}) Widgets.ts(v, id, 11.5f, k);
+                Widgets.ts(v, R.id.left_text, 11, k);
+                Widgets.ts(v, R.id.caf_text, 11, k);
+            }
+            Widgets.ts(v, R.id.page_title, 14, k);
+            v.setOnClickFillInIntent(R.id.page, new Intent());
+            return v;
+        }
+
+        /** "8:05a  2 eggs and toast  320 kcal · 18 g P" */
+        void logLine(android.text.SpannableStringBuilder b, String at, String name, int kcal, int p) {
+            if (b.length() > 0) b.append('\n');
+            String t = "";
+            if (at != null && at.matches("\\d{1,2}:\\d{2}")) { String[] q = at.split(":"); t = Widgets.clock(Integer.parseInt(q[0]) * 60 + Integer.parseInt(q[1])).replace(" AM", "a").replace(" PM", "p"); }
+            int s0 = b.length();
+            b.append(t.isEmpty() ? "" : t + "  ");
+            b.setSpan(new android.text.style.ForegroundColorSpan(Widgets.MUTED), s0, b.length(), 0);
+            b.append(name);
+            if (kcal >= 0) {
+                b.append("  ");
+                int s1 = b.length();
+                b.append(Widgets.fmt(kcal));
+                b.setSpan(new android.text.style.ForegroundColorSpan(0xFFF0A040), s1, b.length(), 0);
+                b.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), s1, b.length(), 0);
+            }
+            if (p > 0) {
+                int s2 = b.length();
+                b.append(" · " + p + " g P");
+                b.setSpan(new android.text.style.ForegroundColorSpan(0xFF6B9CEC), s2, b.length(), 0);
+            }
         }
 
         /** [name, kcal, "HH:MM", protein g] like a row in the Tracker's food log. */

@@ -33,18 +33,16 @@ final class Timeline {
 
     /** w and h in pixels; d is the screen density; now is minutes since midnight. */
     static Bitmap draw(JSONArray me, JSONArray mi, int now, int w, int h, float d, float k) {
-        Bitmap b = Bitmap.createBitmap(Math.max(1, w), Math.max(1, h), Bitmap.Config.ARGB_8888);
+        Bitmap b = Bitmap.createBitmap(Math.max(1, w), Math.max(1, h), Bitmap.Config.RGB_565);   // half the size of ARGB, so a page stays well under the 1 MB a widget update can carry
         Canvas cv = new Canvas(b);
+        cv.drawColor(0xFF1F252D);   // the page card's color
         List<Ev> a = parse(me), m = parse(mi);
 
-        // The hours shown: from an hour before now to the end of the day's last event (at least 8 hours, at most 15).
-        // A tall widget (about 34 dp per hour) shows more of the day: up to 18 hours.
-        int hours = Math.max(8, Math.min(18, Math.round(h / d / (34 * k))));
-        int start = Math.max(0, Math.min(now - 60, 24 * 60 - hours * 60) / 60 * 60);
-        int last = start + hours * 60;
-        for (List<Ev> l : java.util.Arrays.asList(a, m)) for (Ev e : l) if (e.s >= start - 30 || e.e > start) last = Math.max(last, Math.min(24 * 60, e.e));
-        int end = Math.min(Math.min(24 * 60, start + Math.max(15, hours) * 60), (last + 59) / 60 * 60);
-        if (end - start < 6 * 60) end = Math.min(24 * 60, start + 6 * 60);
+        // The whole day: from 7 AM (or the first thing that isn't sleep, if earlier) to midnight.
+        int start = 7 * 60;
+        for (List<Ev> l : java.util.Arrays.asList(a, m)) for (Ev e : l) if (!"sleep".equals(e.cat)) start = Math.min(start, e.s / 60 * 60);
+        if (now >= 0 && now < start) start = Math.max(0, (now - 30) / 60 * 60);
+        int end = 24 * 60;
         float gutter = 30 * d * k, top = 6 * d, bottom = h - 4 * d, perMin = (bottom - top) / (end - start);
         float colGap = 6 * d, colW = (w - gutter - colGap) / 2f;
 

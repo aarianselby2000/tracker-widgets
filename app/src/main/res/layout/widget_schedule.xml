@@ -10,6 +10,6 @@
     <TextView android:id="@+id/now_mi" style="@style/WLine" android:textSize="12sp" android:textStyle="bold" android:maxLines="2" />
     <TextView android:id="@+id/next_mi" style="@style/WLine" android:textColor="@color/muted" android:textSize="10sp" android:maxLines="2" />
   </LinearLayout></LinearLayout>
-<ImageView android:id="@+id/timeline" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="6dp" android:scaleType="fitXY" />
+<FrameLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="6dp"><StackView android:id="@+id/day_stack" android:layout_width="match_parent" android:layout_height="match_parent" android:loopViews="false" /><TextView android:id="@+id/day_empty" android:layout_width="match_parent" android:layout_height="match_parent" android:gravity="center" android:textColor="@color/muted" android:textSize="12sp" android:text="Open the Tracker once so your days fill in." /></FrameLayout>
 <TextView android:id="@+id/study_text" style="@style/WLine" android:layout_marginTop="5dp" android:textColor="#3EC2AC" android:textSize="11sp" android:textStyle="bold" />
 </LinearLayout>

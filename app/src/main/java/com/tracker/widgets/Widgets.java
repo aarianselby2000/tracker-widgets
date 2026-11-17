@@ -45,7 +45,7 @@ final class Widgets {
         JSONObject w = WidgetData.w(c);
         for (int id : m.getAppWidgetIds(new ComponentName(c, FoodWidget.class))) {
             m.updateAppWidget(id, food(c, d, w, id));
-            m.notifyAppWidgetViewDataChanged(id, R.id.food_list);
+            m.notifyAppWidgetViewDataChanged(id, R.id.health_stack);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) {
             m.updateAppWidget(id, money(c, d, w, id));
@@ -53,6 +53,7 @@ final class Widgets {
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, ScheduleWidget.class))) {
             m.updateAppWidget(id, schedule(c, d, w, id));
+            m.notifyAppWidgetViewDataChanged(id, R.id.day_stack);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, DeadlinesWidget.class))) {
             m.updateAppWidget(id, school(c, d, id));
@@ -71,65 +72,23 @@ final class Widgets {
         common(c, v, d, "#health", FoodWidget.class);
         float k = scale(c, wid);
         title(v, k);
-        for (int id : new int[]{R.id.lbl_k, R.id.lbl_p, R.id.lbl_c, R.id.lbl_f, R.id.lbl_w}) ts(v, id, 12, k);
-        for (int id : new int[]{R.id.val_k, R.id.val_p, R.id.val_c, R.id.val_f, R.id.val_w, R.id.left_text, R.id.caf_text, R.id.btn_supps, R.id.foods_text}) ts(v, id, 11, k);
-        for (int id : new int[]{R.id.btn_w1, R.id.btn_w2, R.id.btn_w3, R.id.btn_food}) ts(v, id, 12, k);
-        // With room to spare (a tall widget), today's foods get their own list, like the Tracker's Food tab.
-        boolean tall = sizeDp(c, wid)[1] >= 340;
-        v.setViewVisibility(R.id.food_list, tall ? View.VISIBLE : View.GONE);
-        if (tall) {
-            Intent svc = new Intent(c, ListService.class).putExtra("kind", "foods").putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
-            svc.setData(Uri.parse("tracker://list/foods/" + wid));
-            v.setRemoteAdapter(R.id.food_list, svc);
-            v.setEmptyView(R.id.food_list, R.id.foods_text);
-            Intent open = new Intent(c, OpenActivity.class).putExtra("section", "#health");
-            v.setPendingIntentTemplate(R.id.food_list, PendingIntent.getActivity(c, 7300, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
-        }
+        // Three pages to swipe through: Today (the Tracker's food bars), Food log, This week.
+        stack(c, v, wid, R.id.health_stack, R.id.health_empty, "health", "#health");
         JSONObject h = w.optJSONObject("h");
-        Double kcal = h != null ? opt(h, "kcal") : num(d.get("kcal")), kcalT = h != null ? opt(h, "kcalT") : num(d.get("kcal_target"));
-        Double p = h != null ? opt(h, "p") : num(d.get("protein")), pT = h != null ? opt(h, "pT") : num(d.get("protein_target"));
-        Double water = h != null ? opt(h, "water") : num(d.get("water_oz")), waterG = h != null ? opt(h, "waterG") : num(d.get("water_goal_oz"));
-        double addW = Phone.pendingWater(c);
-        if (addW > 0) water = (water == null ? 0 : water) + addW;
-        // The Tracker's food bars: blue on the way, green once on target, orange when over (same rules as its Food tab).
-        Double carbs = h != null ? opt(h, "c") : null, carbsT = h != null ? opt(h, "cT") : null;
-        Double fat = h != null ? opt(h, "f") : null, fatT = h != null ? opt(h, "fT") : null;
-        macro(v, R.id.bar_k_b, R.id.bar_k_g, R.id.bar_k_o, R.id.val_k, kcal, kcalT, "kcal", "kcal");
-        macro(v, R.id.bar_p_b, R.id.bar_p_g, R.id.bar_p_o, R.id.val_p, p, pT, "g", "p");
-        macro(v, R.id.bar_c_b, R.id.bar_c_g, R.id.bar_c_o, R.id.val_c, carbs, carbsT, "g", "c");
-        macro(v, R.id.bar_f_b, R.id.bar_f_g, R.id.bar_f_o, R.id.val_f, fat, fatT, "g", "f");
-        v.setProgressBar(R.id.bar_w_b, 100, water != null && waterG != null && waterG > 0 ? (int) Math.round(Math.min(1, water / waterG) * 100) : 0, false);
-        v.setTextViewText(R.id.val_w, amount(water, waterG, "oz"));
-        String left = "";
-        if (kcal != null && kcalT != null && kcalT > 0)
-            left = kcal < kcalT ? fmt(kcalT - kcal) + " kcal and " + fmt(Math.max(0, (pT == null ? 0 : pT) - (p == null ? 0 : p))) + " g protein left" : "Calorie target reached";
-        v.setTextViewText(R.id.left_text, left);
         boolean supps = "yes".equals(h != null ? h.optString("supps") : d.get("supplements"));
         Boolean ps = Phone.pendingSupps(c);
         if (ps != null) supps = ps;
-        Double caf = h != null ? opt(h, "caf") : num(d.get("caffeine_mg"));
-        v.setTextViewText(R.id.caf_text, "☕ " + (caf == null ? "–" : fmt(caf)) + " / 400 mg");
-        // Today's last foods, newest first, with ones typed on the phone that the Tracker hasn't estimated yet.
-        StringBuilder f = new StringBuilder();
-        for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) f.append(f.length() > 0 ? " · " : "").append("⏳ Photo");
-        List<JSONObject> pf = Phone.pendingOf(c, "food");
-        for (int i = pf.size() - 1; i >= 0; i--) f.append(f.length() > 0 ? " · " : "").append("⏳ ").append(pf.get(i).optString("text"));
-        JSONArray foods = h != null ? h.optJSONArray("foods") : null;
-        for (int i = foods == null ? -1 : foods.length() - 1; i >= 0 && f.length() < 160; i--) {
-            JSONArray x = foods.optJSONArray(i);
-            if (x != null) f.append(f.length() > 0 ? " · " : "").append(x.optString(0)).append(x.optInt(1) > 0 ? " " + x.optInt(1) : "");
-        }
-        v.setTextViewText(R.id.foods_text, f.length() == 0 || tall ? "No food logged today" : f.toString());
         int bottle = h != null ? h.optInt("bottle", 40) : 40;
         v.setTextViewText(R.id.btn_w3, "+" + bottle + " oz");
         v.setOnClickPendingIntent(R.id.btn_w1, act(c, "water", "oz", "8"));
         v.setOnClickPendingIntent(R.id.btn_w2, act(c, "water", "oz", "16"));
         v.setOnClickPendingIntent(R.id.btn_w3, act(c, "water", "oz", String.valueOf(bottle)));
-        v.setTextViewText(R.id.btn_supps, supps ? "✓ Supplements" : "○ Supplements");
+        v.setTextViewText(R.id.btn_supps, supps ? "✓ Supps" : "Supps");
         v.setTextColor(R.id.btn_supps, supps ? 0xFF55B981 : MUTED);
         v.setOnClickPendingIntent(R.id.btn_supps, act(c, "supps", "on", supps ? "false" : "true"));
         v.setOnClickPendingIntent(R.id.btn_food, entry(c, "food", null, false));
         v.setOnClickPendingIntent(R.id.btn_cam, entry(c, "food", null, true));
+        for (int id : new int[]{R.id.btn_w1, R.id.btn_w2, R.id.btn_w3, R.id.btn_supps, R.id.btn_food}) ts(v, id, 12, k);
         return v;
     }
 
@@ -183,7 +142,7 @@ final class Widgets {
         ts(v, R.id.next_me, 10, k); ts(v, R.id.next_mi, 10, k);
         ts(v, R.id.study_text, 11, k);
         LocalDate today = LocalDate.now();
-        v.setTextViewText(R.id.title_text, "TODAY · " + today.format(DateTimeFormatter.ofPattern("EEE M/d", Locale.US)).toUpperCase(Locale.US));
+        v.setTextViewText(R.id.title_text, "SCHEDULE");
         JSONObject s = w.optJSONObject("s");
         String note = "";
         if (s == null) note = "Open the Tracker once (version 67 or later) so your day fills in.";
@@ -195,13 +154,8 @@ final class Widgets {
         boolean studying = study != null && study.optInt(1) == 1;
         nowNext(v, s != null ? s.optJSONArray("me") : null, nowMin, R.id.now_me, R.id.next_me, "Miranda", studying ? s.optJSONArray("nowMe") : null);
         nowNext(v, s != null ? s.optJSONArray("mi") : null, nowMin, R.id.now_mi, R.id.next_mi, "Aarian", null);
-        // The day as the Tracker draws it, sized to this widget (its height minus the header and the two cards).
-        int[] sz = sizeDp(c, wid);
-        float dens = Math.min(2.75f, c.getResources().getDisplayMetrics().density);
-        int wDp = Math.max(160, sz[0]) - 26;
-        int hDp = Math.max(80, sz[1] - Math.round(150 * k) - (note.isEmpty() ? 0 : 14));
-        v.setImageViewBitmap(R.id.timeline, Timeline.draw(s != null ? s.optJSONArray("me") : null, s != null ? s.optJSONArray("mi") : null,
-                nowMin, Math.round(wDp * dens), Math.round(hDp * dens), dens, k));
+        // Today and the next six days, each drawn like the Tracker's grid: swipe up and down through them.
+        stack(c, v, wid, R.id.day_stack, R.id.day_empty, "days", "#schedule");
         String st = study == null ? "" : "Studied today: " + hm(study.optInt(0)) + (studying ? " · studying now" : "");
         v.setTextViewText(R.id.study_text, st);
         return v;
@@ -273,6 +227,16 @@ final class Widgets {
         ts(v, R.id.updated_text, 10, Math.min(k, 1.15f));
     }
 
+    /** A stack of pages filled by ListService; tapping a page opens that section of the Tracker. */
+    private static void stack(Context c, RemoteViews v, int wid, int stackId, int emptyId, String kind, String section) {
+        Intent svc = new Intent(c, ListService.class).putExtra("kind", kind).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
+        svc.setData(Uri.parse("tracker://list/" + kind + "/" + wid));
+        v.setRemoteAdapter(stackId, svc);
+        v.setEmptyView(stackId, emptyId);
+        Intent open = new Intent(c, OpenActivity.class).putExtra("section", section);
+        v.setPendingIntentTemplate(stackId, PendingIntent.getActivity(c, 7400 + kind.hashCode() % 100, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
+    }
+
     /** A scrolling list filled by ListService; its buttons all go to ActionReceiver. */
     private static void list(Context c, RemoteViews v, int wid, int listId, int emptyId, String kind) {
         Intent svc = new Intent(c, ListService.class).putExtra("kind", kind).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
@@ -315,7 +279,7 @@ final class Widgets {
     }
 
     /** One food bar: which color shows (blue, green or orange, like the Tracker's macrosHTML) and "1,820 / 3,330 kcal". */
-    private static void macro(RemoteViews v, int blue, int green, int orange, int val, Double a, Double t, String unit, String kind) {
+    static void macro(RemoteViews v, int blue, int green, int orange, int val, Double a, Double t, String unit, String kind) {
         double pct = a != null && t != null && t > 0 ? a / t * 100 : 0;
         String cls = t == null || t <= 0 ? "" : kind.equals("kcal") ? (pct > 105 ? "over" : pct >= 90 ? "ok" : "") : kind.equals("p") ? (pct >= 100 ? "ok" : "") : (pct > 115 ? "over" : pct >= 90 ? "ok" : "");
         int show = cls.equals("ok") ? green : cls.equals("over") ? orange : blue;
@@ -325,7 +289,7 @@ final class Widgets {
     }
 
     /** "1,820 / 3,330 kcal" with the amount in bold and the target in gray. */
-    private static CharSequence amount(Double a, Double t, String unit) {
+    static CharSequence amount(Double a, Double t, String unit) {
         SpannableStringBuilder b = new SpannableStringBuilder();
         b.append(a == null ? "–" : fmt(a));
         b.setSpan(new StyleSpan(android.graphics.Typeface.BOLD), 0, b.length(), 0);
