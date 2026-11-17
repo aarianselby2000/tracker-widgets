@@ -10,7 +10,7 @@ android {
         versionCode 2
         versionName '1.1'
         // owner/repo whose GitHub releases hold new versions (see Updater.java)
-        buildConfigField 'String', 'UPDATE_REPO', '"' + (project.findProperty('updateRepo') ?: 'OWNER/tracker-widgets') + '"'
+        buildConfigField 'String', 'UPDATE_REPO', '"' + (project.findProperty('updateRepo') ?: 'aarianselby2000/tracker-widgets') + '"'
     }
     buildFeatures { buildConfig true }
     compileOptions {
