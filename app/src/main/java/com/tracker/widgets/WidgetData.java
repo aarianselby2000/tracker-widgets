@@ -45,6 +45,8 @@ final class WidgetData {
         if (url.isEmpty()) return "No sheet link yet: open the Tracker Widgets app and paste it.";
         try {
             String csv = download(url);
+            if (csv.trim().isEmpty())
+                return "The link works, but the Widget tab is still empty. Open the Tracker in Claude for a minute (phone or laptop) so it fills in, then tap ↻.";
             Map<String, String> m = parse(csv);
             if (!m.containsKey("updated")) {
                 return "That link doesn't show the Widget tab as CSV. Publish the Widget tab as CSV and paste that link.";
