@@ -22,6 +22,7 @@ public abstract class BaseWidget extends AppWidgetProvider {
     public void onUpdate(Context c, AppWidgetManager m, int[] ids) {
         Widgets.updateAll(c);
         schedule(c);
+        tick(c);
         refreshNow(c);
     }
 
@@ -29,6 +30,24 @@ public abstract class BaseWidget extends AppWidgetProvider {
     public void onReceive(Context c, Intent i) {
         super.onReceive(c, i);
         if (Widgets.ACTION_REFRESH.equals(i.getAction())) refreshNow(c);
+        if (ACTION_TICK.equals(i.getAction())) Widgets.updateAll(c);   // moves Today's now line; no download
+    }
+
+    @Override
+    public void onAppWidgetOptionsChanged(Context c, AppWidgetManager m, int id, android.os.Bundle o) {
+        Widgets.updateAll(c);   // resized: redraw at the new size
+    }
+
+    static final String ACTION_TICK = "com.tracker.widgets.TICK";
+
+    /** Redraws every 15 minutes while the phone is awake (it doesn't wake the phone), so the now line keeps up. */
+    static void tick(Context c) {
+        android.app.AlarmManager am = (android.app.AlarmManager) c.getSystemService(Context.ALARM_SERVICE);
+        Intent i = new Intent(c, ScheduleWidget.class).setAction(ACTION_TICK);
+        android.app.PendingIntent pi = android.app.PendingIntent.getBroadcast(c, 4242, i,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE);
+        if (am != null) am.setInexactRepeating(android.app.AlarmManager.ELAPSED_REALTIME, android.os.SystemClock.elapsedRealtime() + 15 * 60000L,
+                android.app.AlarmManager.INTERVAL_FIFTEEN_MINUTES, pi);
     }
 
     /** Every 30 minutes while online (Android may stretch this when the phone is idle). */

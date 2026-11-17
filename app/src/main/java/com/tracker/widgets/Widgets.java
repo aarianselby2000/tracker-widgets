@@ -47,8 +47,6 @@ final class Widgets {
         for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) m.updateAppWidget(id, money(c, d, w));
         for (int id : m.getAppWidgetIds(new ComponentName(c, ScheduleWidget.class))) {
             m.updateAppWidget(id, schedule(c, d, w, id));
-            m.notifyAppWidgetViewDataChanged(id, R.id.list_me);
-            m.notifyAppWidgetViewDataChanged(id, R.id.list_mi);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, DeadlinesWidget.class))) {
             m.updateAppWidget(id, school(c, d, id));
@@ -71,8 +69,19 @@ final class Widgets {
         Double water = h != null ? opt(h, "water") : num(d.get("water_oz")), waterG = h != null ? opt(h, "waterG") : num(d.get("water_goal_oz"));
         double addW = Phone.pendingWater(c);
         if (addW > 0) water = (water == null ? 0 : water) + addW;
-        v.setImageViewBitmap(R.id.rings, Rings.draw(c, new Double[][]{{kcal, kcalT}, {p, pT}, {water, waterG}},
-                new String[]{"CALORIES", "PROTEIN", "WATER"}, new String[]{"", " g", " oz"}, new int[]{0xFFF0A040, 0xFF6B9CEC, 0xFF5BB3F0}));
+        // The Tracker's food bars: blue on the way, green once on target, orange when over (same rules as its Food tab).
+        Double carbs = h != null ? opt(h, "c") : null, carbsT = h != null ? opt(h, "cT") : null;
+        Double fat = h != null ? opt(h, "f") : null, fatT = h != null ? opt(h, "fT") : null;
+        macro(v, R.id.bar_k_b, R.id.bar_k_g, R.id.bar_k_o, R.id.val_k, kcal, kcalT, "kcal", "kcal");
+        macro(v, R.id.bar_p_b, R.id.bar_p_g, R.id.bar_p_o, R.id.val_p, p, pT, "g", "p");
+        macro(v, R.id.bar_c_b, R.id.bar_c_g, R.id.bar_c_o, R.id.val_c, carbs, carbsT, "g", "c");
+        macro(v, R.id.bar_f_b, R.id.bar_f_g, R.id.bar_f_o, R.id.val_f, fat, fatT, "g", "f");
+        v.setProgressBar(R.id.bar_w_b, 100, water != null && waterG != null && waterG > 0 ? (int) Math.round(Math.min(1, water / waterG) * 100) : 0, false);
+        v.setTextViewText(R.id.val_w, amount(water, waterG, "oz"));
+        String left = "";
+        if (kcal != null && kcalT != null && kcalT > 0)
+            left = kcal < kcalT ? fmt(kcalT - kcal) + " kcal and " + fmt(Math.max(0, (pT == null ? 0 : pT) - (p == null ? 0 : p))) + " g protein left" : "Calorie target reached";
+        v.setTextViewText(R.id.left_text, left);
         boolean supps = "yes".equals(h != null ? h.optString("supps") : d.get("supplements"));
         Boolean ps = Phone.pendingSupps(c);
         if (ps != null) supps = ps;
@@ -170,8 +179,13 @@ final class Widgets {
         boolean studying = study != null && study.optInt(1) == 1;
         nowNext(v, s != null ? s.optJSONArray("me") : null, nowMin, R.id.now_me, R.id.next_me, "Miranda", studying ? s.optJSONArray("nowMe") : null);
         nowNext(v, s != null ? s.optJSONArray("mi") : null, nowMin, R.id.now_mi, R.id.next_mi, "Aarian", null);
-        list(c, v, wid, R.id.list_me, R.id.empty_me, "me");
-        list(c, v, wid, R.id.list_mi, R.id.empty_mi, "mi");
+        // The day as the Tracker draws it, sized to this widget (its height minus the header and the two cards).
+        android.os.Bundle o = AppWidgetManager.getInstance(c).getAppWidgetOptions(wid);
+        float dens = Math.min(2.75f, c.getResources().getDisplayMetrics().density);
+        int wDp = Math.max(160, o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 300)) - 26;
+        int hDp = Math.max(80, o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 300) - 150 - (note.isEmpty() ? 0 : 14));
+        v.setImageViewBitmap(R.id.timeline, Timeline.draw(s != null ? s.optJSONArray("me") : null, s != null ? s.optJSONArray("mi") : null,
+                nowMin, Math.round(wDp * dens), Math.round(hDp * dens), dens));
         String st = study == null ? "" : "Studied today: " + hm(study.optInt(0)) + (studying ? " · studying now" : "");
         v.setTextViewText(R.id.study_text, st);
         return v;
@@ -255,6 +269,27 @@ final class Widgets {
                 .setData(Uri.parse("tracker://entry/" + mode + "/" + dir + "/" + camera))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
         return PendingIntent.getActivity(c, (mode + dir + camera).hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** One food bar: which color shows (blue, green or orange, like the Tracker's macrosHTML) and "1,820 / 3,330 kcal". */
+    private static void macro(RemoteViews v, int blue, int green, int orange, int val, Double a, Double t, String unit, String kind) {
+        double pct = a != null && t != null && t > 0 ? a / t * 100 : 0;
+        String cls = t == null || t <= 0 ? "" : kind.equals("kcal") ? (pct > 105 ? "over" : pct >= 90 ? "ok" : "") : kind.equals("p") ? (pct >= 100 ? "ok" : "") : (pct > 115 ? "over" : pct >= 90 ? "ok" : "");
+        int show = cls.equals("ok") ? green : cls.equals("over") ? orange : blue;
+        for (int id : new int[]{blue, green, orange}) v.setViewVisibility(id, id == show ? View.VISIBLE : View.GONE);
+        v.setProgressBar(show, 100, (int) Math.round(Math.min(100, pct)), false);
+        v.setTextViewText(val, amount(a, t, unit));
+    }
+
+    /** "1,820 / 3,330 kcal" with the amount in bold and the target in gray. */
+    private static CharSequence amount(Double a, Double t, String unit) {
+        SpannableStringBuilder b = new SpannableStringBuilder();
+        b.append(a == null ? "–" : fmt(a));
+        b.setSpan(new StyleSpan(android.graphics.Typeface.BOLD), 0, b.length(), 0);
+        int s = b.length();
+        b.append(t != null && t > 0 ? " / " + fmt(t) + " " + unit : " " + unit);
+        b.setSpan(new ForegroundColorSpan(MUTED), s, b.length(), 0);
+        return b;
     }
 
     /** One line of Money's recent list: name, the amount in red (out) or green (in), then the details in gray. */
