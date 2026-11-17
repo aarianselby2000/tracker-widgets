@@ -86,7 +86,7 @@ final class Phone {
             long t = System.currentTimeMillis();
             for (int i = 0; i < now.length(); i++) {
                 JSONObject e = now.optJSONObject(i);
-                if (e != null && ids.contains(e.optString("id"))) { e.put("_sent", true); e.put("_sentAt", t); }
+                if (e != null && ids.contains(e.optString("id"))) { e.put("_sent", true); e.put("_sentAt", t); e.remove("img"); }
             }
             save(c, now);
             return null;

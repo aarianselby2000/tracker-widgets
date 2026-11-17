@@ -136,11 +136,14 @@ public class ListService extends RemoteViewsService {
             RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.item_inbox);
             String key = r.optString(0), type = r.optString(1);
             String[] tag = TAG.containsKey(type) ? TAG.get(type) : new String[]{type.toUpperCase(), "#9AA4B1"};
-            v.setTextViewText(R.id.tag_text, tag[0]);
-            v.setTextColor(R.id.tag_text, Widgets.parse(tag[1]));
+            int tc = Widgets.parse(tag[1]);
+            Widgets.pill(v, R.id.tag, R.id.tag_bg, R.id.tag_t, tag[0], tc, tc);
+            v.setInt(R.id.tag_bg, "setImageAlpha", 60);
             v.setTextViewText(R.id.what_text, r.optString(2));
             String why = r.optString(3), from = r.optString(4);
-            v.setTextViewText(R.id.from_text, from + (why.isEmpty() ? "" : " · " + why));
+            v.setTextViewText(R.id.from_text, "  " + from);
+            v.setTextViewText(R.id.why_text, why);
+            v.setViewVisibility(R.id.why_text, why.isEmpty() ? View.GONE : View.VISIBLE);
             List<String[]> btns = new ArrayList<>();   // label, do, card
             if (r.optInt(6) == 1) {
                 btns.add(new String[]{"My card", "add", "Self"});
@@ -158,7 +161,7 @@ public class ListService extends RemoteViewsService {
                 if (i >= btns.size()) { v.setViewVisibility(p[0], View.GONE); continue; }
                 String[] b = btns.get(i);
                 boolean primary = "add".equals(b[1]) && (i == 0 || r.optInt(6) == 1);
-                Widgets.pill(v, p[0], p[1], p[2], b[0], primary ? Widgets.PRIMARY : Widgets.SUNK, primary ? Widgets.ON_PRIMARY : Widgets.INK);
+                Widgets.pill(v, p[0], p[1], p[2], b[0], primary ? tc : 0xFF2E3640, primary ? Widgets.ON_PRIMARY : Widgets.INK);
                 v.setOnClickFillInIntent(p[0], new Intent().putExtra("op", "sug").putExtra("key", key).putExtra("do", b[1]).putExtra("card", b[2])
                         .putExtra("label", r.optString(2)));
             }
@@ -173,10 +176,13 @@ public class ListService extends RemoteViewsService {
             boolean past = end <= now, cur = s <= now && now < end;
             String col = CAT.containsKey(r.optString(3)) ? CAT.get(r.optString(3)) : "#8B95A7";
             v.setInt(R.id.ev_bar, "setColorFilter", Widgets.parse(col));
+            v.setInt(R.id.ev_bg, "setColorFilter", Widgets.parse(col));
+            v.setInt(R.id.ev_bg, "setImageAlpha", past ? 22 : cur ? 80 : 45);
+            v.setInt(R.id.ev_bar, "setImageAlpha", past ? 110 : 255);
             v.setTextViewText(R.id.ev_time, (cur ? "NOW · " : "") + Widgets.clock(s) + " – " + Widgets.clock(e) + (r.optString(5).isEmpty() ? "" : " · " + r.optString(5)));
             v.setTextViewText(R.id.ev_title, (r.optInt(4) == 1 ? "♥ " : "") + r.optString(2));
             v.setTextColor(R.id.ev_title, past ? 0xFF6B7380 : Widgets.INK);
-            v.setTextColor(R.id.ev_time, cur ? Widgets.parse(col) : past ? 0xFF5B6471 : Widgets.MUTED);
+            v.setTextColor(R.id.ev_time, cur ? Widgets.parse(col) : past ? 0xFF5B6471 : 0xFFB4BCC8);
             return v;
         }
     }

@@ -1,22 +1,24 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_bg" android:orientation="vertical" android:padding="12dp"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical"><TextView android:id="@+id/title_text" style="@style/WTitle" android:text="TODAY" /><TextView android:id="@+id/updated_text" style="@style/WSub" /><TextView android:id="@+id/refresh" style="@style/WRefresh" /></LinearLayout>
-<TextView android:id="@+id/note_text" style="@style/WLine" android:textColor="#F0A040" android:textSize="10sp" android:maxLines="2" android:visibility="gone" />
-<LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="6dp" android:orientation="horizontal">
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/wbg_schedule" android:orientation="vertical" android:padding="13dp"><LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical"><ImageView android:layout_width="18dp" android:layout_height="18dp" android:src="@drawable/ic_schedule" /><TextView android:id="@+id/title_text" style="@style/WTitle" android:textColor="@color/schedule" android:text="TODAY" /><TextView android:id="@+id/updated_text" style="@style/WSub" /><ImageView android:id="@+id/refresh" android:layout_width="30dp" android:layout_height="24dp" android:paddingStart="8dp" android:src="@drawable/ic_refresh" /></LinearLayout>
+<TextView android:id="@+id/note_text" style="@style/WLine" android:textColor="@color/pr" android:textSize="10sp" android:maxLines="2" android:visibility="gone" />
+<LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="7dp" android:orientation="horizontal">
 <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical">
-  <TextView android:id="@+id/name_me" style="@style/WLine" android:textColor="#7DA4EC" android:textStyle="bold" android:text="Aarian" />
-  <TextView android:id="@+id/now_me" style="@style/WLine" android:textSize="12sp" android:textStyle="bold" android:maxLines="2" />
-  <TextView android:id="@+id/next_me" style="@style/WLine" android:textColor="@color/muted" android:textSize="10sp" android:maxLines="2" />
-  <ListView android:id="@+id/list_me" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="4dp" android:divider="@null" />
-  <TextView android:id="@+id/empty_me" style="@style/WLine" android:layout_height="0dp" android:layout_weight="1" android:textColor="@color/muted" android:textSize="11sp" android:text="Nothing else today" />
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/soft_aarian" android:orientation="vertical" android:padding="7dp">
+    <TextView android:id="@+id/name_me" style="@style/WLine" android:fontFamily="sans-serif-condensed" android:textColor="@color/aarian" android:textSize="13sp" android:textStyle="bold" android:letterSpacing="0.05" android:text="AARIAN" />
+    <TextView android:id="@+id/now_me" style="@style/WLine" android:textSize="12sp" android:textStyle="bold" android:maxLines="2" />
+    <TextView android:id="@+id/next_me" style="@style/WLine" android:textColor="@color/muted" android:textSize="10sp" android:maxLines="2" />
+  </LinearLayout>
+  <ListView android:id="@+id/list_me" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="5dp" android:divider="@null" android:dividerHeight="0dp" />
+  <TextView android:id="@+id/empty_me" style="@style/WLine" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="5dp" android:textColor="@color/muted" android:textSize="11sp" android:text="Nothing else today" />
+</LinearLayout><ImageView android:layout_width="8dp" android:layout_height="match_parent" /><LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/soft_miranda" android:orientation="vertical" android:padding="7dp">
+    <TextView android:id="@+id/name_mi" style="@style/WLine" android:fontFamily="sans-serif-condensed" android:textColor="@color/miranda" android:textSize="13sp" android:textStyle="bold" android:letterSpacing="0.05" android:text="MIRANDA ❤" />
+    <TextView android:id="@+id/now_mi" style="@style/WLine" android:textSize="12sp" android:textStyle="bold" android:maxLines="2" />
+    <TextView android:id="@+id/next_mi" style="@style/WLine" android:textColor="@color/muted" android:textSize="10sp" android:maxLines="2" />
+  </LinearLayout>
+  <ListView android:id="@+id/list_mi" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="5dp" android:divider="@null" android:dividerHeight="0dp" />
+  <TextView android:id="@+id/empty_mi" style="@style/WLine" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="5dp" android:textColor="@color/muted" android:textSize="11sp" android:text="Nothing else today" />
 </LinearLayout>
-<ImageView android:layout_width="1dp" android:layout_height="match_parent" android:layout_marginStart="8dp" android:layout_marginEnd="8dp" android:src="@color/line" android:scaleType="fitXY" />
-<LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:orientation="vertical">
-  <TextView android:id="@+id/name_mi" style="@style/WLine" android:textColor="#F07D9C" android:textStyle="bold" android:text="Miranda" />
-  <TextView android:id="@+id/now_mi" style="@style/WLine" android:textSize="12sp" android:textStyle="bold" android:maxLines="2" />
-  <TextView android:id="@+id/next_mi" style="@style/WLine" android:textColor="@color/muted" android:textSize="10sp" android:maxLines="2" />
-  <ListView android:id="@+id/list_mi" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="4dp" android:divider="@null" />
-  <TextView android:id="@+id/empty_mi" style="@style/WLine" android:layout_height="0dp" android:layout_weight="1" android:textColor="@color/muted" android:textSize="11sp" android:text="Nothing else today" />
 </LinearLayout>
-</LinearLayout>
-<TextView android:id="@+id/study_text" style="@style/WLine" android:layout_marginTop="4dp" android:textColor="@color/muted" android:textSize="10sp" />
+<TextView android:id="@+id/study_text" style="@style/WLine" android:layout_marginTop="5dp" android:textColor="#3EC2AC" android:textSize="11sp" android:textStyle="bold" />
 </LinearLayout>

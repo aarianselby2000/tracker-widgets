@@ -7,6 +7,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.net.Uri;
+import android.text.SpannableStringBuilder;
+import android.text.style.ForegroundColorSpan;
+import android.text.style.StyleSpan;
 import android.view.View;
 import android.widget.RemoteViews;
 
@@ -68,16 +71,16 @@ final class Widgets {
         Double water = h != null ? opt(h, "water") : num(d.get("water_oz")), waterG = h != null ? opt(h, "waterG") : num(d.get("water_goal_oz"));
         double addW = Phone.pendingWater(c);
         if (addW > 0) water = (water == null ? 0 : water) + addW;
-        bar(v, R.id.kcal_text, R.id.kcal_bar, "Calories", kcal, kcalT, "");
-        bar(v, R.id.protein_text, R.id.protein_bar, "Protein", p, pT, " g");
-        bar(v, R.id.water_text, R.id.water_bar, "Water", water, waterG, " oz");
+        v.setImageViewBitmap(R.id.rings, Rings.draw(c, new Double[][]{{kcal, kcalT}, {p, pT}, {water, waterG}},
+                new String[]{"CALORIES", "PROTEIN", "WATER"}, new String[]{"", " g", " oz"}, new int[]{0xFFF0A040, 0xFF6B9CEC, 0xFF5BB3F0}));
         boolean supps = "yes".equals(h != null ? h.optString("supps") : d.get("supplements"));
         Boolean ps = Phone.pendingSupps(c);
         if (ps != null) supps = ps;
         Double caf = h != null ? opt(h, "caf") : num(d.get("caffeine_mg"));
-        v.setTextViewText(R.id.extra_text, (caf == null ? "" : "Caffeine " + fmt(caf) + " / 400 mg · ") + (supps ? "Supplements ✓" : "Supplements not yet"));
+        v.setTextViewText(R.id.caf_text, "☕ " + (caf == null ? "–" : fmt(caf)) + " / 400 mg");
         // Today's last foods, newest first, with ones typed on the phone that the Tracker hasn't estimated yet.
         StringBuilder f = new StringBuilder();
+        for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) f.append(f.length() > 0 ? " · " : "").append("⏳ Photo");
         List<JSONObject> pf = Phone.pendingOf(c, "food");
         for (int i = pf.size() - 1; i >= 0; i--) f.append(f.length() > 0 ? " · " : "").append("⏳ ").append(pf.get(i).optString("text"));
         JSONArray foods = h != null ? h.optJSONArray("foods") : null;
@@ -91,10 +94,11 @@ final class Widgets {
         v.setOnClickPendingIntent(R.id.btn_w1, act(c, "water", "oz", "8"));
         v.setOnClickPendingIntent(R.id.btn_w2, act(c, "water", "oz", "16"));
         v.setOnClickPendingIntent(R.id.btn_w3, act(c, "water", "oz", String.valueOf(bottle)));
-        v.setTextViewText(R.id.btn_supps, supps ? "Supps ✓" : "Supps");
-        v.setTextColor(R.id.btn_supps, supps ? 0xFF55B981 : INK);
+        v.setTextViewText(R.id.btn_supps, supps ? "✓ Supplements" : "○ Supplements");
+        v.setTextColor(R.id.btn_supps, supps ? 0xFF55B981 : MUTED);
         v.setOnClickPendingIntent(R.id.btn_supps, act(c, "supps", "on", supps ? "false" : "true"));
-        v.setOnClickPendingIntent(R.id.btn_food, entry(c, "food", null));
+        v.setOnClickPendingIntent(R.id.btn_food, entry(c, "food", null, false));
+        v.setOnClickPendingIntent(R.id.btn_cam, entry(c, "food", null, true));
         return v;
     }
 
@@ -108,39 +112,43 @@ final class Widgets {
         JSONObject m = w.optJSONObject("m");
         Double bal = m != null ? opt(m, "checking") : num(d.get("checking")), min = m != null ? opt(m, "min") : num(d.get("checking_min"));
         Double spent = m != null ? opt(m, "spent") : num(d.get("month_spent"));
-        // Entries added on the phone and not in the Tracker yet.
-        StringBuilder recent = new StringBuilder();
+        // Entries added on the phone and not in the Tracker yet, then the latest ones, amounts in red (out) or green (in).
+        SpannableStringBuilder recent = new SpannableStringBuilder();
         boolean approx = false;
+        for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) line(recent, "⏳ Receipt photo", null, "read when the Tracker opens");
         for (JSONObject e : Phone.pendingOf(c, "money")) {
             double a = e.optDouble("amount", 0);
             String dir = e.optString("dir"), type = e.optString("type");
             double sign = "in".equals(dir) ? 1 : "out".equals(dir) ? -1 : ("From savings".equals(type) || "Cash deposit".equals(type) ? 1 : -1);
             if (bal != null && ("move".equals(dir) || "Self".equals(e.optString("card")))) { bal += sign * a; approx = true; }
             if ("out".equals(dir) && SPEND.contains(type)) spent = (spent == null ? 0 : spent) + a;
-            recent.append(recent.length() > 0 ? "\n" : "").append("⏳ ").append(e.optString("source")).append(" · ").append(signed(sign * a)).append(" · ").append(type);
+            line(recent, "⏳ " + e.optString("source"), sign * a, type);
         }
         v.setTextViewText(R.id.balance_text, bal == null ? "–" : (approx ? "≈ " : "") + dollars(bal));
         String room = "Checking";
+        int pct = 0;
         if (bal != null && min != null) {
             double r = bal - min;
-            room = r < 0 ? "Checking · below your minimum by " + dollars(-r) : "Checking · " + dollars(r) + " above your minimum";
-            v.setTextColor(R.id.balance_text, r < 0 ? 0xFFF07070 : INK);
+            room = r < 0 ? "Checking · below your minimum by " + dollars(-r) : "Checking · " + dollars(r) + " above your " + dollars(min) + " minimum";
+            v.setTextColor(R.id.balance_text, r < 0 ? 0xFFF07070 : r < Math.max(50, min * 0.25) ? 0xFFF0A040 : 0xFF55B981);
+            pct = bal <= 0 ? 0 : (int) Math.round(Math.min(1.0, r <= 0 ? 0 : r / Math.max(min * 2, 200)) * 100);
         }
+        v.setProgressBar(R.id.room_bar, 100, pct, false);
         v.setTextViewText(R.id.room_text, room);
-        v.setTextViewText(R.id.spent_text, spent == null ? "" : "Spent this month: " + dollars(spent));
+        v.setTextViewText(R.id.spent_text, spent == null ? "" : "Spent this month  " + dollars(spent));
         JSONArray rec = m != null ? m.optJSONArray("recent") : null;
         String mon = m != null ? m.optString("month", "") : "";
-        for (int i = 0; rec != null && i < rec.length() && i < 4; i++) {
+        for (int i = 0; rec != null && i < rec.length() && i < 5; i++) {
             JSONArray x = rec.optJSONArray(i);
             if (x == null) continue;
             String day = mon.length() == 7 ? Integer.parseInt(mon.substring(5)) + "/" + x.optInt(0) : "";
-            recent.append(recent.length() > 0 ? "\n" : "").append(x.optString(1)).append(" · ").append(signed(x.optDouble(2, 0))).append(" · ").append(x.optString(3))
-                    .append(day.isEmpty() ? "" : " · " + day);
+            line(recent, x.optString(1), x.optDouble(2, 0), x.optString(3) + (day.isEmpty() ? "" : " · " + day));
         }
-        v.setTextViewText(R.id.recent_text, recent.toString());
-        v.setOnClickPendingIntent(R.id.btn_out, entry(c, "money", "out"));
-        v.setOnClickPendingIntent(R.id.btn_in, entry(c, "money", "in"));
-        v.setOnClickPendingIntent(R.id.btn_move, entry(c, "money", "move"));
+        v.setTextViewText(R.id.recent_text, recent);
+        v.setOnClickPendingIntent(R.id.btn_out, entry(c, "money", "out", false));
+        v.setOnClickPendingIntent(R.id.btn_in, entry(c, "money", "in", false));
+        v.setOnClickPendingIntent(R.id.btn_move, entry(c, "money", "move", false));
+        v.setOnClickPendingIntent(R.id.btn_cam, entry(c, "money", "out", true));
         return v;
     }
 
@@ -202,7 +210,7 @@ final class Widgets {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_inbox);
         common(c, v, d, "#inbox", InboxWidget.class);
         list(c, v, wid, R.id.inbox_list, R.id.inbox_empty, "inbox");
-        v.setOnClickPendingIntent(R.id.btn_quick, entry(c, "quick", null));
+        v.setOnClickPendingIntent(R.id.btn_quick, entry(c, "quick", null, false));
         return v;
     }
 
@@ -242,11 +250,27 @@ final class Widgets {
     }
 
     /** A button that opens a form (add food, a money entry, a quick add). */
-    private static PendingIntent entry(Context c, String mode, String dir) {
-        Intent i = new Intent(c, EntryActivity.class).putExtra("mode", mode).putExtra("dir", dir)
-                .setData(Uri.parse("tracker://entry/" + mode + "/" + dir))
+    private static PendingIntent entry(Context c, String mode, String dir, boolean camera) {
+        Intent i = new Intent(c, EntryActivity.class).putExtra("mode", mode).putExtra("dir", dir).putExtra("camera", camera)
+                .setData(Uri.parse("tracker://entry/" + mode + "/" + dir + "/" + camera))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-        return PendingIntent.getActivity(c, (mode + dir).hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        return PendingIntent.getActivity(c, (mode + dir + camera).hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** One line of Money's recent list: name, the amount in red (out) or green (in), then the details in gray. */
+    private static void line(SpannableStringBuilder b, String name, Double amt, String rest) {
+        if (b.length() > 0) b.append('\n');
+        int s0 = b.length();
+        b.append(name);
+        b.setSpan(new ForegroundColorSpan(INK), s0, b.length(), 0);
+        if (amt != null) {
+            b.append("  ");
+            int s1 = b.length();
+            b.append(signed(amt));
+            b.setSpan(new ForegroundColorSpan(amt < 0 ? 0xFFF07070 : 0xFF55B981), s1, b.length(), 0);
+            b.setSpan(new StyleSpan(android.graphics.Typeface.BOLD), s1, b.length(), 0);
+        }
+        if (rest != null && !rest.isEmpty()) b.append("  ").append(rest);
     }
 
     private static void bar(RemoteViews v, int text, int bar, String label, Double a, Double t, String unit) {
