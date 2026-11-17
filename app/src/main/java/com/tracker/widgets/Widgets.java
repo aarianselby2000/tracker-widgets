@@ -131,31 +131,73 @@ final class Widgets {
         ts(v, R.id.caf_text, 11, k);
     }
 
-    /** Health page 2: today's foods, newest first, with ones added on the phone that aren't estimated yet. */
+    /** Health page 2: today's foods as cards, like rows of the Tracker's food table: time, name, calories, serving, macros. */
     private static void healthLog(Context c, RemoteViews v, JSONObject h, float k, float pageH) {
         v.removeAllViews(R.id.log_rows);
-        List<CharSequence> lines = new java.util.ArrayList<>();
-        for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) lines.add(logLine("", "⏳ Photo, read when the Tracker opens", -1, -1));
-        for (JSONObject e : Phone.pendingOf(c, "food")) lines.add(logLine(e.optString("hm"), "⏳ " + e.optString("text"), -1, -1));
+        List<JSONArray> rows = new java.util.ArrayList<>();
+        for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) rows.add(new JSONArray().put("⏳ Photo").put(-1).put("").put(-1).put(-1).put(-1).put("read when the Tracker opens").put("pending"));
+        for (JSONObject e : Phone.pendingOf(c, "food")) rows.add(new JSONArray().put("⏳ " + e.optString("text")).put(-1).put(e.optString("hm")).put(-1).put(-1).put(-1).put("estimated when the Tracker opens").put("pending"));
         JSONArray f = h != null ? h.optJSONArray("foods") : null;
-        int total = 0;
+        int total = 0, tp = 0, tc = 0, tf = 0;
         for (int i = f == null ? -1 : f.length() - 1; i >= 0; i--) {
             JSONArray x = f.optJSONArray(i);
             if (x == null) continue;
-            lines.add(logLine(x.optString(2), x.optString(0), x.optInt(1, -1), x.optInt(3, -1)));
-            total += Math.max(0, x.optInt(1, 0));
+            rows.add(x);
+            total += Math.max(0, x.optInt(1, 0)); tp += Math.max(0, x.optInt(3, 0)); tc += Math.max(0, x.optInt(4, 0)); tf += Math.max(0, x.optInt(5, 0));
         }
-        int fit = Math.max(3, (int) ((pageH - 24) / (21 * k)));
-        if (lines.isEmpty()) lines.add("Nothing logged today yet.");
-        for (int i = 0; i < Math.min(fit, lines.size()); i++) {
+        int fit = Math.max(2, (int) ((pageH - 22) / (50 * k)));
+        for (int i = 0; i < Math.min(fit, rows.size()); i++) v.addView(R.id.log_rows, foodCard(c, rows.get(i), k));
+        if (rows.isEmpty()) {
             RemoteViews r = new RemoteViews(c.getPackageName(), R.layout.item_log_row);
-            r.setTextViewText(R.id.log_line, lines.get(i));
-            r.setTextViewTextSize(R.id.log_line, android.util.TypedValue.COMPLEX_UNIT_SP, 12.5f * k);
+            r.setTextViewText(R.id.log_line, "Nothing logged today yet. Tap Add food or 📷 below.");
             v.addView(R.id.log_rows, r);
         }
         int n = f == null ? 0 : f.length();
-        v.setTextViewText(R.id.log_total, (n == 0 ? "" : n + (n == 1 ? " food" : " foods") + " · " + fmt(total) + " kcal") + (lines.size() > fit ? "  ·  " + (lines.size() - fit) + " more in the Tracker" : ""));
+        SpannableStringBuilder b = new SpannableStringBuilder();
+        if (n > 0) {
+            b.append(n + (n == 1 ? " food · " : " foods · "));
+            int s0 = b.length(); b.append(fmt(total) + " kcal"); b.setSpan(new ForegroundColorSpan(0xFFF0A040), s0, b.length(), 0); b.setSpan(new StyleSpan(android.graphics.Typeface.BOLD), s0, b.length(), 0);
+            b.append("   ");
+            macros(b, tp, tc, tf);
+        }
+        if (rows.size() > fit) b.append("   +" + (rows.size() - fit) + " more");
+        v.setTextViewText(R.id.log_total, b);
         ts(v, R.id.log_total, 11, k);
+    }
+
+    /** One food: [name, kcal, "HH:MM", protein, carbs, fat, serving, source]. */
+    private static RemoteViews foodCard(Context c, JSONArray x, float k) {
+        RemoteViews r = new RemoteViews(c.getPackageName(), R.layout.item_food_card);
+        String at = x.optString(2), t = "";
+        if (at.matches("\\d{1,2}:\\d{2}")) { String[] q = at.split(":"); t = clock(Integer.parseInt(q[0]) * 60 + Integer.parseInt(q[1])).replace(" AM", "a").replace(" PM", "p"); }
+        r.setTextViewText(R.id.fc_time, t);
+        r.setViewVisibility(R.id.fc_time, t.isEmpty() ? View.GONE : View.VISIBLE);
+        r.setTextViewText(R.id.fc_name, x.optString(0));
+        int kc = x.optInt(1, -1);
+        r.setTextViewText(R.id.fc_kcal, kc >= 0 ? fmt(kc) : "");
+        String src = x.optString(7), badge = src.equals("photo") ? "📷 " : src.equals("receipt") ? "🧾 " : src.equals("label") ? "🏷 " : src.equals("email") ? "✉ " : "";
+        r.setTextViewText(R.id.fc_serving, badge + x.optString(6));
+        SpannableStringBuilder m = new SpannableStringBuilder();
+        if (x.optInt(3, -1) >= 0) macros(m, x.optInt(3), x.optInt(4), x.optInt(5));
+        r.setTextViewText(R.id.fc_macros, m);
+        r.setTextViewTextSize(R.id.fc_time, android.util.TypedValue.COMPLEX_UNIT_SP, 11 * k);
+        r.setTextViewTextSize(R.id.fc_name, android.util.TypedValue.COMPLEX_UNIT_SP, 12.5f * k);
+        r.setTextViewTextSize(R.id.fc_kcal, android.util.TypedValue.COMPLEX_UNIT_SP, 15 * k);
+        r.setTextViewTextSize(R.id.fc_serving, android.util.TypedValue.COMPLEX_UNIT_SP, 10.5f * k);
+        r.setTextViewTextSize(R.id.fc_macros, android.util.TypedValue.COMPLEX_UNIT_SP, 10.5f * k);
+        return r;
+    }
+
+    /** "P 20  C 55  F 22" in the Tracker's protein blue, carb yellow and fat pink. */
+    private static void macros(SpannableStringBuilder b, int p, int cb, int f) {
+        String[][] parts = {{"P " + p, "#6B9CEC"}, {"C " + cb, "#E8BD34"}, {"F " + f, "#EE77AE"}};
+        for (int i = 0; i < 3; i++) {
+            if (i > 0) b.append("  ");
+            int s0 = b.length();
+            b.append(parts[i][0]);
+            b.setSpan(new ForegroundColorSpan(android.graphics.Color.parseColor(parts[i][1])), s0, b.length(), 0);
+            b.setSpan(new StyleSpan(android.graphics.Typeface.BOLD), s0, b.length(), 0);
+        }
     }
 
     /** "8:05a  2 eggs and toast  320 · 18 g P" */
@@ -287,10 +329,9 @@ final class Widgets {
         String dn = off == 0 ? "TODAY" : off == 1 ? "TOMORROW" : date.format(DateTimeFormatter.ofPattern("EEEE", Locale.US)).toUpperCase(Locale.US);
         v.setTextViewText(R.id.day_title, dn + " · " + date.format(DateTimeFormatter.ofPattern("EEE M/d", Locale.US)).toUpperCase(Locale.US));
         ts(v, R.id.day_title, 15, k);
-        v.setTextColor(R.id.day_prev, off > 0 ? INK : 0xFF4A525E);
-        v.setTextColor(R.id.day_next, off < count - 1 ? INK : 0xFF4A525E);
-        v.setOnClickPendingIntent(R.id.day_prev, flip(c, ScheduleWidget.class, wid, "day", Math.max(0, off - 1)));
-        v.setOnClickPendingIntent(R.id.day_next, flip(c, ScheduleWidget.class, wid, "day", Math.min(count - 1, off + 1)));
+        // ‹ › loop through the week: back from today goes to the last day, on from the last day comes back to today.
+        v.setOnClickPendingIntent(R.id.day_prev, flip(c, ScheduleWidget.class, wid, "day", (off - 1 + count) % count));
+        v.setOnClickPendingIntent(R.id.day_next, flip(c, ScheduleWidget.class, wid, "day", (off + 1) % count));
         v.setOnClickPendingIntent(R.id.day_title, flip(c, ScheduleWidget.class, wid, "day", 0));
         v.setViewVisibility(R.id.cards, off == 0 ? View.VISIBLE : View.GONE);
         v.setViewVisibility(R.id.names, off == 0 ? View.GONE : View.VISIBLE);
