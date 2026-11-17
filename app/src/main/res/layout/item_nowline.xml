@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/nowline" android:layout_width="match_parent" android:layout_height="10dp" android:orientation="horizontal" android:gravity="center_vertical">
+  <TextView android:id="@+id/now_t" android:layout_width="24dp" android:layout_height="wrap_content" android:gravity="end" android:paddingEnd="1dp" android:textColor="@color/now" android:textSize="8sp" android:textStyle="bold" android:maxLines="1" android:includeFontPadding="false" />
+  <ImageView android:layout_width="8dp" android:layout_height="8dp" android:src="@drawable/dot_now" />
+  <ImageView android:layout_width="0dp" android:layout_height="2dp" android:layout_weight="1" android:src="@color/now" android:scaleType="fitXY" />
+</LinearLayout>

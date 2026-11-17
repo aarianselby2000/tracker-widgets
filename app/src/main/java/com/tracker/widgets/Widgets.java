@@ -45,7 +45,6 @@ final class Widgets {
         JSONObject w = WidgetData.w(c);
         for (int id : m.getAppWidgetIds(new ComponentName(c, FoodWidget.class))) {
             m.updateAppWidget(id, food(c, d, w, id));
-            m.notifyAppWidgetViewDataChanged(id, R.id.health_stack);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) {
             m.updateAppWidget(id, money(c, d, w, id));
@@ -53,7 +52,6 @@ final class Widgets {
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, ScheduleWidget.class))) {
             m.updateAppWidget(id, schedule(c, d, w, id));
-            m.notifyAppWidgetViewDataChanged(id, R.id.day_stack);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, DeadlinesWidget.class))) {
             m.updateAppWidget(id, school(c, d, id));
@@ -72,9 +70,23 @@ final class Widgets {
         common(c, v, d, "#health", FoodWidget.class);
         float k = scale(c, wid);
         title(v, k);
-        // Three pages to swipe through: Today (the Tracker's food bars), Food log, This week.
-        stack(c, v, wid, R.id.health_stack, R.id.health_empty, "health", "#health");
         JSONObject h = w.optJSONObject("h");
+        // One screen with three pages: tap it (or a tab) to flip Today → Food log → This week.
+        int page = Math.max(0, Math.min(2, WidgetData.prefs(c).getInt("health_page_" + wid, 0)));
+        int[] tabs = {R.id.tab0, R.id.tab1, R.id.tab2}, pages = {R.id.page_today, R.id.page_log, R.id.page_week};
+        for (int i = 0; i < 3; i++) {
+            v.setViewVisibility(pages[i], i == page ? View.VISIBLE : View.GONE);
+            v.setInt(tabs[i], "setBackgroundResource", i == page ? R.drawable.soft_health : R.drawable.soft_plain);
+            v.setTextColor(tabs[i], i == page ? 0xFFEF6A6A : MUTED);
+            ts(v, tabs[i], 12, k);
+            v.setOnClickPendingIntent(tabs[i], flip(c, FoodWidget.class, wid, "page", i));
+        }
+        v.setOnClickPendingIntent(R.id.pages, flip(c, FoodWidget.class, wid, "page", (page + 1) % 3));
+        int[] sz = sizeDp(c, wid);
+        float pageH = Math.max(120, sz[1] - (24 + 34 + 90) * k - 30);   // minus header, tabs, buttons and padding
+        if (page == 0) healthToday(c, v, d, h, k);
+        else if (page == 1) healthLog(c, v, h, k, pageH);
+        else healthWeek(c, v, h, k, pageH);
         boolean supps = "yes".equals(h != null ? h.optString("supps") : d.get("supplements"));
         Boolean ps = Phone.pendingSupps(c);
         if (ps != null) supps = ps;
@@ -90,6 +102,118 @@ final class Widgets {
         v.setOnClickPendingIntent(R.id.btn_cam, entry(c, "food", null, true));
         for (int id : new int[]{R.id.btn_w1, R.id.btn_w2, R.id.btn_w3, R.id.btn_supps, R.id.btn_food}) ts(v, id, 12, k);
         return v;
+    }
+
+    /** Health page 1: the Tracker's food bars, what's left today, and caffeine. */
+    private static void healthToday(Context c, RemoteViews v, Map<String, String> d, JSONObject h, float k) {
+        Double kcal = h != null ? opt(h, "kcal") : num(d.get("kcal")), kcalT = h != null ? opt(h, "kcalT") : num(d.get("kcal_target"));
+        Double p = h != null ? opt(h, "p") : num(d.get("protein")), pT = h != null ? opt(h, "pT") : num(d.get("protein_target"));
+        Double water = h != null ? opt(h, "water") : num(d.get("water_oz")), waterG = h != null ? opt(h, "waterG") : num(d.get("water_goal_oz"));
+        double addW = Phone.pendingWater(c);
+        if (addW > 0) water = (water == null ? 0 : water) + addW;
+        Double carbs = h != null ? opt(h, "c") : null, carbsT = h != null ? opt(h, "cT") : null;
+        Double fat = h != null ? opt(h, "f") : null, fatT = h != null ? opt(h, "fT") : null;
+        macro(v, R.id.bar_k_b, R.id.bar_k_g, R.id.bar_k_o, R.id.val_k, kcal, kcalT, "kcal", "kcal");
+        macro(v, R.id.bar_p_b, R.id.bar_p_g, R.id.bar_p_o, R.id.val_p, p, pT, "g", "p");
+        macro(v, R.id.bar_c_b, R.id.bar_c_g, R.id.bar_c_o, R.id.val_c, carbs, carbsT, "g", "c");
+        macro(v, R.id.bar_f_b, R.id.bar_f_g, R.id.bar_f_o, R.id.val_f, fat, fatT, "g", "f");
+        v.setProgressBar(R.id.bar_w_b, 100, water != null && waterG != null && waterG > 0 ? (int) Math.round(Math.min(1, water / waterG) * 100) : 0, false);
+        v.setTextViewText(R.id.val_w, amount(water, waterG, "oz"));
+        String left = "";
+        if (kcal != null && kcalT != null && kcalT > 0)
+            left = kcal < kcalT ? fmt(kcalT - kcal) + " kcal and " + fmt(Math.max(0, (pT == null ? 0 : pT) - (p == null ? 0 : p))) + " g protein left" : "Calorie target reached";
+        v.setTextViewText(R.id.left_text, left);
+        Double caf = h != null ? opt(h, "caf") : num(d.get("caffeine_mg"));
+        v.setTextViewText(R.id.caf_text, "☕ " + (caf == null ? "–" : fmt(caf)) + " / 400 mg caffeine");
+        for (int id : new int[]{R.id.lbl_k, R.id.lbl_p, R.id.lbl_c, R.id.lbl_f, R.id.lbl_w}) ts(v, id, 12.5f, k);
+        for (int id : new int[]{R.id.val_k, R.id.val_p, R.id.val_c, R.id.val_f, R.id.val_w}) ts(v, id, 11.5f, k);
+        ts(v, R.id.left_text, 11, k);
+        ts(v, R.id.caf_text, 11, k);
+    }
+
+    /** Health page 2: today's foods, newest first, with ones added on the phone that aren't estimated yet. */
+    private static void healthLog(Context c, RemoteViews v, JSONObject h, float k, float pageH) {
+        v.removeAllViews(R.id.log_rows);
+        List<CharSequence> lines = new java.util.ArrayList<>();
+        for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) lines.add(logLine("", "⏳ Photo, read when the Tracker opens", -1, -1));
+        for (JSONObject e : Phone.pendingOf(c, "food")) lines.add(logLine(e.optString("hm"), "⏳ " + e.optString("text"), -1, -1));
+        JSONArray f = h != null ? h.optJSONArray("foods") : null;
+        int total = 0;
+        for (int i = f == null ? -1 : f.length() - 1; i >= 0; i--) {
+            JSONArray x = f.optJSONArray(i);
+            if (x == null) continue;
+            lines.add(logLine(x.optString(2), x.optString(0), x.optInt(1, -1), x.optInt(3, -1)));
+            total += Math.max(0, x.optInt(1, 0));
+        }
+        int fit = Math.max(3, (int) ((pageH - 24) / (21 * k)));
+        if (lines.isEmpty()) lines.add("Nothing logged today yet.");
+        for (int i = 0; i < Math.min(fit, lines.size()); i++) {
+            RemoteViews r = new RemoteViews(c.getPackageName(), R.layout.item_log_row);
+            r.setTextViewText(R.id.log_line, lines.get(i));
+            r.setTextViewTextSize(R.id.log_line, android.util.TypedValue.COMPLEX_UNIT_SP, 12.5f * k);
+            v.addView(R.id.log_rows, r);
+        }
+        int n = f == null ? 0 : f.length();
+        v.setTextViewText(R.id.log_total, (n == 0 ? "" : n + (n == 1 ? " food" : " foods") + " · " + fmt(total) + " kcal") + (lines.size() > fit ? "  ·  " + (lines.size() - fit) + " more in the Tracker" : ""));
+        ts(v, R.id.log_total, 11, k);
+    }
+
+    /** "8:05a  2 eggs and toast  320 · 18 g P" */
+    static CharSequence logLine(String at, String name, int kcal, int p) {
+        SpannableStringBuilder b = new SpannableStringBuilder();
+        String t = "";
+        if (at != null && at.matches("\\d{1,2}:\\d{2}")) { String[] q = at.split(":"); t = clock(Integer.parseInt(q[0]) * 60 + Integer.parseInt(q[1])).replace(" AM", "a").replace(" PM", "p"); }
+        if (!t.isEmpty()) { b.append(t).append("  "); b.setSpan(new ForegroundColorSpan(MUTED), 0, b.length(), 0); }
+        b.append(name);
+        if (kcal >= 0) {
+            b.append("  ");
+            int s1 = b.length();
+            b.append(fmt(kcal));
+            b.setSpan(new ForegroundColorSpan(0xFFF0A040), s1, b.length(), 0);
+            b.setSpan(new StyleSpan(android.graphics.Typeface.BOLD), s1, b.length(), 0);
+        }
+        if (p > 0) {
+            int s2 = b.length();
+            b.append(" · ").append(String.valueOf(p)).append(" g P");
+            b.setSpan(new ForegroundColorSpan(0xFF6B9CEC), s2, b.length(), 0);
+        }
+        return b;
+    }
+
+    /** Health page 3: the last 7 days of calories, protein and water against each day's target (dashed line). */
+    private static void healthWeek(Context c, RemoteViews v, JSONObject h, float k, float pageH) {
+        JSONArray week = h != null ? h.optJSONArray("week") : null;
+        int n = week == null ? 0 : week.length();
+        int[] dayIds = {R.id.wd0, R.id.wd1, R.id.wd2, R.id.wd3, R.id.wd4, R.id.wd5, R.id.wd6};
+        for (int i = 0; i < 7; i++) {
+            String lab = "";
+            JSONArray x = i < n ? week.optJSONArray(i) : null;
+            if (x != null) try { lab = i == n - 1 ? "Today" : LocalDate.parse(x.optString(0)).getDayOfWeek().getDisplayName(java.time.format.TextStyle.SHORT, Locale.US); } catch (Exception ignored) {}
+            v.setTextViewText(dayIds[i], lab);
+            v.setTextColor(dayIds[i], i == n - 1 ? INK : MUTED);
+            ts(v, dayIds[i], 10, k);
+        }
+        if (android.os.Build.VERSION.SDK_INT < 31) {   // bars need Android 12; before that, the numbers
+            StringBuilder t = new StringBuilder();
+            for (int i = 0; i < n; i++) { JSONArray x = week.optJSONArray(i); if (x != null) t.append(x.optString(0).substring(5)).append("  ").append(x.optInt(1)).append(" kcal · ").append(x.optInt(3)).append(" g P · ").append(x.optInt(5)).append(" oz\n"); }
+            v.setTextViewText(R.id.week_text, t.toString().trim());
+            v.setViewVisibility(R.id.week_text, View.VISIBLE);
+            for (int id : new int[]{R.id.wk_k, R.id.wk_p, R.id.wk_w, R.id.wl_k, R.id.wl_p, R.id.wl_w}) v.setViewVisibility(id, View.GONE);
+            return;
+        }
+        float area = Math.max(24, (pageH - 20 * k - 3 * 18 * k) / 3f - 12);
+        int[] rows = {R.id.wk_k, R.id.wk_p, R.id.wk_w}, labels = {R.id.wl_k, R.id.wl_p, R.id.wl_w};
+        int[][] idx = {{1, 2}, {3, 4}, {5, 6}};
+        for (int r = 0; r < 3; r++) {
+            v.removeAllViews(rows[r]);
+            ts(v, labels[r], 11, k);
+            for (int i = 0; i < 7; i++) {
+                JSONArray x = i < n ? week.optJSONArray(i) : null;
+                double val = x != null ? x.optDouble(idx[r][0], 0) : 0, t = x != null ? x.optDouble(idx[r][1], 0) : 0, fr = t > 0 ? val / t : 0;
+                int color = r == 2 ? (fr >= 1 ? 0xFF55B981 : 0xFF5BB3F0) : r == 0 ? (fr * 100 > 105 ? 0xFFF0A040 : fr * 100 >= 90 ? 0xFF55B981 : 0xFF6B9CEC) : (fr >= 1 ? 0xFF55B981 : 0xFF6B9CEC);
+                v.addView(rows[r], WeekBars.col(c, val, t, area, color, k));
+            }
+        }
     }
 
     // ---------- Money ----------
@@ -154,8 +278,27 @@ final class Widgets {
         boolean studying = study != null && study.optInt(1) == 1;
         nowNext(v, s != null ? s.optJSONArray("me") : null, nowMin, R.id.now_me, R.id.next_me, "Miranda", studying ? s.optJSONArray("nowMe") : null);
         nowNext(v, s != null ? s.optJSONArray("mi") : null, nowMin, R.id.now_mi, R.id.next_mi, "Aarian", null);
-        // Today and the next six days, each drawn like the Tracker's grid: swipe up and down through them.
-        stack(c, v, wid, R.id.day_stack, R.id.day_empty, "days", "#schedule");
+        // The chosen day (today unless ‹ › were tapped), built as real blocks on a time grid.
+        JSONArray days = s != null ? s.optJSONArray("days") : null;
+        int count = 1 + (days == null ? 0 : days.length()), off = Math.min(count - 1, dayOffset(c, wid));
+        JSONObject day = off == 0 || days == null ? s : days.optJSONObject(off - 1);
+        LocalDate date;
+        try { date = LocalDate.parse(day.optString("date")); } catch (Exception e) { date = today.plusDays(off); }
+        String dn = off == 0 ? "TODAY" : off == 1 ? "TOMORROW" : date.format(DateTimeFormatter.ofPattern("EEEE", Locale.US)).toUpperCase(Locale.US);
+        v.setTextViewText(R.id.day_title, dn + " · " + date.format(DateTimeFormatter.ofPattern("EEE M/d", Locale.US)).toUpperCase(Locale.US));
+        ts(v, R.id.day_title, 15, k);
+        v.setTextColor(R.id.day_prev, off > 0 ? INK : 0xFF4A525E);
+        v.setTextColor(R.id.day_next, off < count - 1 ? INK : 0xFF4A525E);
+        v.setOnClickPendingIntent(R.id.day_prev, flip(c, ScheduleWidget.class, wid, "day", Math.max(0, off - 1)));
+        v.setOnClickPendingIntent(R.id.day_next, flip(c, ScheduleWidget.class, wid, "day", Math.min(count - 1, off + 1)));
+        v.setOnClickPendingIntent(R.id.day_title, flip(c, ScheduleWidget.class, wid, "day", 0));
+        v.setViewVisibility(R.id.cards, off == 0 ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.names, off == 0 ? View.GONE : View.VISIBLE);
+        int[] sz = sizeDp(c, wid);
+        float reserved = (24 + 32 + 20) * k + (off == 0 ? 74 * k : 22 * k) + 44 + (note.isEmpty() ? 0 : 14);
+        if (day != null) Grid.build(c, v, day.optJSONArray("me"), day.optJSONArray("mi"), off == 0 ? nowMin : -1,
+                Math.max(150, sz[0] - 26), Math.max(120, sz[1] - reserved), k);
+        if (off != 0) { v.setTextViewText(R.id.study_text, ""); return v; }
         String st = study == null ? "" : "Studied today: " + hm(study.optInt(0)) + (studying ? " · studying now" : "");
         v.setTextViewText(R.id.study_text, st);
         return v;
@@ -225,6 +368,19 @@ final class Widgets {
     private static void title(RemoteViews v, float k) {
         ts(v, R.id.title_text, 15, k);
         ts(v, R.id.updated_text, 10, Math.min(k, 1.15f));
+    }
+
+    /** Which day the Schedule widget shows: 0 today, 1 tomorrow… (back to today the next day). */
+    static int dayOffset(Context c, int wid) {
+        android.content.SharedPreferences p = WidgetData.prefs(c);
+        return LocalDate.now().toString().equals(p.getString("sched_day_on_" + wid, "")) ? p.getInt("sched_day_" + wid, 0) : 0;
+    }
+
+    /** A tap that flips a widget to a page (Health) or a day (Schedule). */
+    private static PendingIntent flip(Context c, Class<?> provider, int wid, String what, int to) {
+        Intent i = new Intent(c, provider).setAction(BaseWidget.ACTION_FLIP + "." + what + "." + wid + "." + to)
+                .putExtra("what", what).putExtra("to", to).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
+        return PendingIntent.getBroadcast(c, (what + wid + "." + to).hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
     }
 
     /** A stack of pages filled by ListService; tapping a page opens that section of the Tracker. */

@@ -7,8 +7,8 @@ android {
         applicationId 'com.tracker.widgets'
         minSdk 28
         targetSdk 35
-        versionCode 9
-        versionName '1.8'
+        versionCode 10
+        versionName '1.9'
         // owner/repo whose GitHub releases hold new versions (see Updater.java)
         buildConfigField 'String', 'UPDATE_REPO', '"' + (project.findProperty('updateRepo') ?: 'aarianselby2000/tracker-widgets') + '"'
     }

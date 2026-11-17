@@ -20,4 +20,7 @@
 <color name="school">#6B9CEC</color>
 <color name="schedule">#E8BD34</color>
 <color name="inbox">#5BB3F0</color>
+<color name="now">#FF5A5F</color>
+<color name="grid">#2A313B</color>
+<color name="target">#99E9EDF2</color>
 </resources>

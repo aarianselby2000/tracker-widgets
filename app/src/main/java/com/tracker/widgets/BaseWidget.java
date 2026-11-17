@@ -31,6 +31,15 @@ public abstract class BaseWidget extends AppWidgetProvider {
         super.onReceive(c, i);
         if (Widgets.ACTION_REFRESH.equals(i.getAction())) refreshNow(c);
         if (ACTION_TICK.equals(i.getAction())) Widgets.updateAll(c);   // moves Today's now line; no download
+        if (i.getAction() != null && i.getAction().startsWith(ACTION_FLIP)) {   // Health page or Schedule day
+            int id = i.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1), to = i.getIntExtra("to", 0);
+            if (id == -1) return;
+            if ("day".equals(i.getStringExtra("what")))
+                WidgetData.prefs(c).edit().putInt("sched_day_" + id, to).putString("sched_day_on_" + id, java.time.LocalDate.now().toString()).apply();
+            else WidgetData.prefs(c).edit().putInt("health_page_" + id, to).apply();
+            Widgets.updateAll(c);
+            return;
+        }
         if (i.getAction() != null && i.getAction().startsWith(ACTION_SHOW)) {   // a Money tab: show that account's card
             int id = i.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1), idx = i.getIntExtra("idx", 0);
             if (id == -1) return;
@@ -42,6 +51,7 @@ public abstract class BaseWidget extends AppWidgetProvider {
     }
 
     static final String ACTION_SHOW = "com.tracker.widgets.SHOW";
+    static final String ACTION_FLIP = "com.tracker.widgets.FLIP";
 
     @Override
     public void onAppWidgetOptionsChanged(Context c, AppWidgetManager m, int id, android.os.Bundle o) {
