@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tracker Widgets</string>
+    <string name="setup_steps">Your widgets show the numbers the Tracker writes to the \"Widget\" tab of your Sophmore Year Google Sheet whenever the Tracker is open.\n\nOne-time setup:\n1. On a computer, open that sheet in Google Sheets (the phone app can\'t publish).\n2. File → Share → Publish to web.\n3. Pick the \"Widget\" tab and \"Comma-separated values (.csv)\", then Publish.\n4. Copy the link it shows, paste it below, and tap Save and test.\n5. Long-press your home screen → Widgets → Tracker Widgets, and add the ones you want.\n\nTap a widget to open the Tracker, or ↻ to refresh it. They also refresh about every 30 minutes.</string>
+</resources>

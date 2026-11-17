@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/root" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_bg" android:orientation="vertical" android:padding="12dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="CHECKING" android:textColor="@color/ink" android:textSize="13sp" android:textStyle="bold" android:letterSpacing="0.08" />
+        <TextView android:id="@+id/refresh" android:layout_width="wrap_content" android:layout_height="wrap_content" android:paddingStart="10dp" android:paddingEnd="2dp" android:text="↻" android:textColor="@color/muted" android:textSize="16sp" />
+    </LinearLayout>
+    <TextView android:id="@+id/balance_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textColor="@color/ink" android:textSize="26sp" android:textStyle="bold" android:maxLines="1" />
+    <TextView android:id="@+id/room_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="@color/muted" android:textSize="11sp" android:maxLines="2" />
+    <TextView android:id="@+id/spent_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp" android:textColor="@color/ink" android:textSize="12sp" android:maxLines="1" />
+    <TextView android:id="@+id/updated_text" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:textColor="@color/muted" android:textSize="10sp" android:maxLines="1" android:ellipsize="end" />
+</LinearLayout>
