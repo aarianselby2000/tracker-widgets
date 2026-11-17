@@ -63,7 +63,7 @@ public class ListService extends RemoteViewsService {
         @Override public void onDestroy() {}
         @Override public int getCount() { return rows.size(); }
         @Override public RemoteViews getLoadingView() { return null; }
-        @Override public int getViewTypeCount() { return 1; }
+        @Override public int getViewTypeCount() { return 12; }
         @Override public long getItemId(int i) { return i; }
         @Override public boolean hasStableIds() { return false; }
 
@@ -88,6 +88,10 @@ public class ListService extends RemoteViewsService {
                 JSONObject h = w.optJSONObject("h");
                 JSONArray f = h != null ? h.optJSONArray("foods") : null;
                 for (int i = f == null ? -1 : f.length() - 1; i >= 0; i--) if (f.optJSONArray(i) != null) rows.add(f.optJSONArray(i));
+            } else if (kind.startsWith("pages:")) {
+                JSONObject pg = w.optJSONObject("pages");
+                JSONArray a = pg != null ? pg.optJSONArray(kind.substring(6)) : null;
+                for (int i = 0; a != null && i < a.length(); i++) if (a.optJSONObject(i) != null) rows.add(new JSONArray().put(a.optJSONObject(i)));
             } else if (kind.equals("health")) {
                 for (String page : new String[]{"today", "log", "week"}) rows.add(new JSONArray().put(page));
             } else if (kind.equals("days")) {
@@ -121,6 +125,7 @@ public class ListService extends RemoteViewsService {
             JSONArray r = rows.get(pos);
             if (kind.equals("assign")) return assign(r);
             if (kind.equals("inbox")) return inbox(r);
+            if (kind.startsWith("pages:")) return Pages.page(c, kind.substring(6), r.optJSONObject(0), pos, rows.size(), wid, k);
             if (kind.equals("acct")) return account(r.optJSONObject(0));
             if (kind.equals("foods")) return food(r);
             if (kind.equals("health")) return healthPage(r.optString(0));

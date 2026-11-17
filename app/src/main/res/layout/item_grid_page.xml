@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/page" android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/item_bg" android:orientation="vertical" android:padding="8dp">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:gravity="center_vertical">
+    <TextView android:id="@+id/day_prev" android:layout_width="36dp" android:layout_height="wrap_content" android:background="@drawable/soft_plain" android:gravity="center" android:paddingTop="3dp" android:paddingBottom="3dp" android:textColor="@color/ink" android:textSize="15sp" android:textStyle="bold" android:text="‹" />
+    <TextView android:id="@+id/day_title" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:gravity="center" android:fontFamily="sans-serif-condensed" android:textColor="@color/schedule" android:textSize="14sp" android:textStyle="bold" android:letterSpacing="0.05" android:maxLines="1" />
+    <TextView android:id="@+id/day_next" android:layout_width="36dp" android:layout_height="wrap_content" android:background="@drawable/soft_plain" android:gravity="center" android:paddingTop="3dp" android:paddingBottom="3dp" android:textColor="@color/ink" android:textSize="15sp" android:textStyle="bold" android:text="›" />
+  </LinearLayout>
+  <TextView android:id="@+id/page_hint" android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center" android:textColor="@color/muted" android:textSize="10sp" />
+  <LinearLayout android:id="@+id/cards" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:orientation="horizontal">
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:background="@drawable/soft_aarian" android:orientation="vertical" android:padding="6dp">
+      <TextView android:id="@+id/now_me" style="@style/WLine" android:textSize="11.5sp" android:textStyle="bold" android:maxLines="2" />
+      <TextView android:id="@+id/next_me" style="@style/WLine" android:textColor="@color/muted" android:textSize="10sp" android:maxLines="2" />
+    </LinearLayout>
+    <ImageView android:layout_width="5dp" android:layout_height="1dp" />
+    <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:background="@drawable/soft_miranda" android:orientation="vertical" android:padding="6dp">
+      <TextView android:id="@+id/now_mi" style="@style/WLine" android:textSize="11.5sp" android:textStyle="bold" android:maxLines="2" />
+      <TextView android:id="@+id/next_mi" style="@style/WLine" android:textColor="@color/muted" android:textSize="10sp" android:maxLines="2" />
+    </LinearLayout>
+  </LinearLayout>
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" android:paddingStart="28dp" android:orientation="horizontal">
+    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-condensed" android:textColor="@color/aarian" android:textSize="11sp" android:textStyle="bold" android:text="AARIAN" />
+    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:fontFamily="sans-serif-condensed" android:textColor="@color/miranda" android:textSize="11sp" android:textStyle="bold" android:text="MIRANDA ❤" />
+  </LinearLayout>
+  <FrameLayout android:id="@+id/grid" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:layout_marginTop="2dp" />
+</LinearLayout>

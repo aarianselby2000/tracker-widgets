@@ -15,7 +15,14 @@ public class ActionReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context c, Intent i) {
         String op = i.getStringExtra("op");
-        if (op == null) return;
+        if (op == null || op.equals("none")) return;
+        if (op.equals("day")) {   // the Schedule's ‹ › (just which day is shown; nothing to send)
+            int wid = i.getIntExtra("wid", -1);
+            if (wid != -1) WidgetData.prefs(c).edit().putInt("sched_day_" + wid, i.getIntExtra("to", 0))
+                    .putString("sched_day_on_" + wid, java.time.LocalDate.now().toString()).apply();
+            Widgets.updateAll(c);
+            return;
+        }
         if (!WidgetData.canSend(c)) {
             Toast.makeText(c, "Open Tracker Widgets and paste the phone link first.", Toast.LENGTH_LONG).show();
             return;
