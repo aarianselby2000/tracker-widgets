@@ -77,6 +77,10 @@ public class ListService extends RemoteViewsService {
                     try { if (set.containsKey(r.optString(0))) r.put(5, set.get(r.optString(0))); } catch (Exception ignored) {}
                     rows.add(r);
                 }
+            } else if (kind.equals("acct")) {
+                JSONObject m = w.optJSONObject("m");
+                JSONArray a = m != null ? m.optJSONArray("acc") : null;
+                for (int i = 0; a != null && i < a.length(); i++) if (a.optJSONObject(i) != null) rows.add(new JSONArray().put(a.optJSONObject(i)));
             } else if (kind.equals("inbox")) {
                 JSONArray a = w.optJSONArray("i");
                 Set<String> done = Phone.pendingSugs(c);
@@ -97,7 +101,92 @@ public class ListService extends RemoteViewsService {
             JSONArray r = rows.get(pos);
             if (kind.equals("assign")) return assign(r);
             if (kind.equals("inbox")) return inbox(r);
+            if (kind.equals("acct")) return account(r.optJSONObject(0));
             return event(r);
+        }
+
+        /** One account card (Checking, Savings or Cash), like its panel in the Tracker's Money section. */
+        RemoteViews account(JSONObject a) {
+            RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.item_account);
+            String k = a.optString("k");
+            int color = k.equals("savings") ? 0xFF6B9CEC : k.equals("cash") ? 0xFFE8BD34 : 0xFF55B981;
+            v.setTextViewText(R.id.acct_name, a.optString("name").toUpperCase(java.util.Locale.US));
+            v.setTextColor(R.id.acct_name, color);
+            v.setOnClickFillInIntent(R.id.acct_card, new Intent());
+            // Entries added on the phone that the Tracker hasn't applied yet move the balance here too.
+            android.text.SpannableStringBuilder rec = new android.text.SpannableStringBuilder();
+            double pend = 0;
+            for (JSONObject e : Phone.pendingOf(c, "money")) {
+                double amt = e.optDouble("amount", 0), eff = effect(k, e.optString("dir"), e.optString("type"), e.optString("card"), amt);
+                if (eff == 0) continue;
+                pend += eff;
+                recLine(rec, "⏳ " + e.optString("source"), eff, e.optString("type"));
+            }
+            boolean has = !a.isNull("bal") && a.has("bal");
+            double bal = a.optDouble("bal", 0) + pend;
+            v.setTextViewText(R.id.acct_bal, has ? (pend != 0 ? "≈ " : "") + Widgets.dollars(bal) : "–");
+            String note = a.optString("note");
+            int bar = -1, pct = 0;
+            if (k.equals("checking") && has) {
+                double min = a.optDouble("min", 0), buf = a.optDouble("buffer", 0), room = bal - min;
+                String st = pend == 0 ? a.optString("st") : room < 0 ? "under" : room <= buf ? "close" : "ok";
+                bar = st.equals("under") ? R.id.acct_bar_r : st.equals("close") ? R.id.acct_bar_a : R.id.acct_bar_g;
+                v.setTextColor(R.id.acct_bal, st.equals("under") ? 0xFFF07070 : st.equals("close") ? 0xFFF0A040 : 0xFF55B981);
+                pct = room <= 0 ? 0 : (int) Math.round(Math.min(1, room / Math.max(min * 2, 200)) * 100);
+                if (pend != 0) note = room < 0 ? Widgets.dollars(-room) + " below your minimum" : Widgets.dollars(room) + " of room above your minimum";
+            } else if (k.equals("savings") && has) {
+                double goal = a.optDouble("goal", 0), total = a.optDouble("total", 0);
+                if (goal > 0) { bar = R.id.acct_bar_b; pct = (int) Math.round(Math.max(0, Math.min(1, bal / goal)) * 100); }
+                if (total != 0) {
+                    double p = a.optDouble("pct", Double.NaN);
+                    v.setTextViewText(R.id.acct_pill, (total >= 0 ? "▲ " : "▼ ") + Widgets.dollars(Math.abs(total)) + (Double.isNaN(p) ? "" : String.format(java.util.Locale.US, " (%s%.1f%%)", total >= 0 ? "+" : "−", Math.abs(p))));
+                    v.setTextColor(R.id.acct_pill, total >= 0 ? 0xFF55B981 : 0xFFF07070);
+                    v.setViewVisibility(R.id.acct_pill, View.VISIBLE);
+                }
+            } else if (k.equals("cash") && has && bal < 0) v.setTextColor(R.id.acct_bal, 0xFFF07070);
+            v.setTextViewText(R.id.acct_note, note);
+            for (int id : new int[]{R.id.acct_bar_g, R.id.acct_bar_a, R.id.acct_bar_r, R.id.acct_bar_b}) v.setViewVisibility(id, id == bar ? View.VISIBLE : View.GONE);
+            v.setViewVisibility(R.id.acct_bars, bar == -1 ? View.GONE : View.VISIBLE);
+            if (bar != -1) v.setProgressBar(bar, 100, pct, false);
+            JSONArray r = a.optJSONArray("recent");
+            for (int i = 0; r != null && i < r.length(); i++) {
+                JSONArray x = r.optJSONArray(i);
+                if (x != null) recLine(rec, x.optString(1), x.optDouble(2, 0), x.optString(3) + " · " + x.optString(0));
+            }
+            v.setTextViewText(R.id.acct_recent, rec.length() == 0 ? "No entries yet" : rec);
+            String asOf = a.optString("asOf");
+            v.setTextViewText(R.id.acct_asof, asOf.length() == 10 ? (k.equals("cash") ? "Counted " : "From your bank ") + Integer.parseInt(asOf.substring(5, 7)) + "/" + Integer.parseInt(asOf.substring(8)) + ", plus entries since" : "");
+            return v;
+        }
+
+        /** How a phone entry changes this account (the Tracker's ckEffect, svEffect and cashEffect). */
+        static double effect(String k, String dir, String type, String card, double amt) {
+            amt = Math.abs(amt);
+            if (k.equals("savings")) return type.equals("To savings") ? amt : type.equals("From savings") ? -amt : 0;
+            if (k.equals("cash")) {
+                if (type.equals("ATM withdrawal")) return amt;
+                if (type.equals("Cash deposit")) return -amt;
+                if (dir.equals("move")) return 0;
+                return card.equals("Cash") ? (dir.equals("in") ? amt : -amt) : 0;
+            }
+            if (type.equals("To savings") || type.equals("ATM withdrawal")) return -amt;
+            if (type.equals("From savings") || type.equals("Cash deposit")) return amt;
+            if (dir.equals("move")) return 0;
+            if (dir.equals("in")) return card.equals("Cash") ? 0 : amt;
+            return card.equals("Self") ? -amt : 0;
+        }
+
+        static void recLine(android.text.SpannableStringBuilder b, String name, double amt, String rest) {
+            if (b.length() > 0) b.append('\n');
+            int s0 = b.length();
+            b.append(name);
+            b.setSpan(new android.text.style.ForegroundColorSpan(Widgets.INK), s0, b.length(), 0);
+            b.append("  ");
+            int s1 = b.length();
+            b.append(Widgets.signed(amt));
+            b.setSpan(new android.text.style.ForegroundColorSpan(amt < 0 ? 0xFFF07070 : 0xFF55B981), s1, b.length(), 0);
+            b.setSpan(new android.text.style.StyleSpan(android.graphics.Typeface.BOLD), s1, b.length(), 0);
+            if (rest != null && !rest.isEmpty()) b.append("  ").append(rest);
         }
 
         /** [id, name, class, due "YYYY-MM-DDTHH:MM", "e"|"h", status] like a row in School. */

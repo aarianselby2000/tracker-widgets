@@ -44,7 +44,10 @@ final class Widgets {
         Map<String, String> d = WidgetData.load(c);
         JSONObject w = WidgetData.w(c);
         for (int id : m.getAppWidgetIds(new ComponentName(c, FoodWidget.class))) m.updateAppWidget(id, food(c, d, w));
-        for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) m.updateAppWidget(id, money(c, d, w));
+        for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) {
+            m.updateAppWidget(id, money(c, d, w, id));
+            m.notifyAppWidgetViewDataChanged(id, R.id.acct_stack);
+        }
         for (int id : m.getAppWidgetIds(new ComponentName(c, ScheduleWidget.class))) {
             m.updateAppWidget(id, schedule(c, d, w, id));
         }
@@ -115,45 +118,28 @@ final class Widgets {
 
     static final List<String> SPEND = Arrays.asList("Food", "Supplies", "Gifts", "Fun", "Bill");
 
-    static RemoteViews money(Context c, Map<String, String> d, JSONObject w) {
+    static RemoteViews money(Context c, Map<String, String> d, JSONObject w, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_money);
         common(c, v, d, "#money", MoneyWidget.class);
         JSONObject m = w.optJSONObject("m");
-        Double bal = m != null ? opt(m, "checking") : num(d.get("checking")), min = m != null ? opt(m, "min") : num(d.get("checking_min"));
         Double spent = m != null ? opt(m, "spent") : num(d.get("month_spent"));
-        // Entries added on the phone and not in the Tracker yet, then the latest ones, amounts in red (out) or green (in).
-        SpannableStringBuilder recent = new SpannableStringBuilder();
-        boolean approx = false;
-        for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) line(recent, "⏳ Receipt photo", null, "read when the Tracker opens");
-        for (JSONObject e : Phone.pendingOf(c, "money")) {
-            double a = e.optDouble("amount", 0);
-            String dir = e.optString("dir"), type = e.optString("type");
-            double sign = "in".equals(dir) ? 1 : "out".equals(dir) ? -1 : ("From savings".equals(type) || "Cash deposit".equals(type) ? 1 : -1);
-            if (bal != null && ("move".equals(dir) || "Self".equals(e.optString("card")))) { bal += sign * a; approx = true; }
-            if ("out".equals(dir) && SPEND.contains(type)) spent = (spent == null ? 0 : spent) + a;
-            line(recent, "⏳ " + e.optString("source"), sign * a, type);
-        }
-        v.setTextViewText(R.id.balance_text, bal == null ? "–" : (approx ? "≈ " : "") + dollars(bal));
-        String room = "Checking";
-        int pct = 0;
-        if (bal != null && min != null) {
-            double r = bal - min;
-            room = r < 0 ? "Checking · below your minimum by " + dollars(-r) : "Checking · " + dollars(r) + " above your " + dollars(min) + " minimum";
-            v.setTextColor(R.id.balance_text, r < 0 ? 0xFFF07070 : r < Math.max(50, min * 0.25) ? 0xFFF0A040 : 0xFF55B981);
-            pct = bal <= 0 ? 0 : (int) Math.round(Math.min(1.0, r <= 0 ? 0 : r / Math.max(min * 2, 200)) * 100);
-        }
-        v.setProgressBar(R.id.room_bar, 100, pct, false);
-        v.setTextViewText(R.id.room_text, room);
+        for (JSONObject e : Phone.pendingOf(c, "money"))
+            if ("out".equals(e.optString("dir")) && SPEND.contains(e.optString("type"))) spent = (spent == null ? 0 : spent) + e.optDouble("amount", 0);
         v.setTextViewText(R.id.spent_text, spent == null ? "" : "Spent this month  " + dollars(spent));
-        JSONArray rec = m != null ? m.optJSONArray("recent") : null;
-        String mon = m != null ? m.optString("month", "") : "";
-        for (int i = 0; rec != null && i < rec.length() && i < 5; i++) {
-            JSONArray x = rec.optJSONArray(i);
-            if (x == null) continue;
-            String day = mon.length() == 7 ? Integer.parseInt(mon.substring(5)) + "/" + x.optInt(0) : "";
-            line(recent, x.optString(1), x.optDouble(2, 0), x.optString(3) + (day.isEmpty() ? "" : " · " + day));
+        // Checking, Savings and Cash as a stack of cards: swipe through them, or tap a tab to jump to one.
+        Intent svc = new Intent(c, ListService.class).putExtra("kind", "acct").putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
+        svc.setData(Uri.parse("tracker://list/acct/" + wid));
+        v.setRemoteAdapter(R.id.acct_stack, svc);
+        v.setEmptyView(R.id.acct_stack, R.id.acct_empty);
+        Intent open = new Intent(c, OpenActivity.class).putExtra("section", "#money");
+        v.setPendingIntentTemplate(R.id.acct_stack, PendingIntent.getActivity(c, 7100, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
+        int[] tabs = {R.id.tab_0, R.id.tab_1, R.id.tab_2};
+        for (int i = 0; i < tabs.length; i++) {
+            Intent t = new Intent(c, MoneyWidget.class).setAction(BaseWidget.ACTION_SHOW + "." + wid + "." + i)
+                    .putExtra("idx", i).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
+            v.setOnClickPendingIntent(tabs[i], PendingIntent.getBroadcast(c, 7200 + wid * 4 + i, t, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
         }
-        v.setTextViewText(R.id.recent_text, recent);
+        v.setDisplayedChild(R.id.acct_stack, WidgetData.prefs(c).getInt("money_acct_" + wid, 0));
         v.setOnClickPendingIntent(R.id.btn_out, entry(c, "money", "out", false));
         v.setOnClickPendingIntent(R.id.btn_in, entry(c, "money", "in", false));
         v.setOnClickPendingIntent(R.id.btn_move, entry(c, "money", "move", false));

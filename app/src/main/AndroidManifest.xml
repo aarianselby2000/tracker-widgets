@@ -36,6 +36,14 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
 
+        <activity
+            android:name=".OpenActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=".open"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
         <receiver android:name=".ActionReceiver" android:exported="false" />
 
         <service
