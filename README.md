@@ -4,23 +4,38 @@ Home-screen widgets for the claude.ai Tracker: **Food & water**, **Deadlines**, 
 
 ## How the data gets there
 The Tracker runs inside Claude, so the app can't read it directly. Since Tracker version 66, while the Tracker is open
-(phone or laptop), its Schedule section writes key/value rows to the **Widget** tab of a private Google Sheet:
-when a number changes, and at least every 15 minutes.
-That tab is published to the web as CSV, and the app downloads it every ~30 minutes (or when you tap ↻).
+(phone or laptop), it writes key/value rows to the **Widget** tab of a private Google Sheet: when something changes,
+and at least every 15 minutes. Since version 67, rows `json1`, `json2`, … hold one JSON object with everything the
+widgets draw (Health, Money, today's schedule for both people, School items, Inbox suggestions, applied phone entries).
 
-Keys: `updated`, `kcal`, `kcal_target`, `protein`, `protein_target`, `water_oz`, `water_goal_oz`, `caffeine_mg`,
-`supplements`, `due1`–`due5` (`name|class|YYYY-MM-DD HH:MM|exam/hw`), `checking`, `checking_min`, `month_spent`, `month`,
-`now` (`title|until …`), `next` (`title|when`), `study_min`, `studying`.
+A small Apps Script on that sheet (deployed as a web app with a secret key) is the app's link to it:
+- `GET …/exec?k=KEY` returns the Widget tab and the ids still waiting in the queue.
+- `POST {k, entries:[…]}` adds one row per entry to the **Phone Queue** tab.
+
+While the Tracker is open it reads Phone Queue every 30 seconds, applies each entry the way its own buttons would,
+and clears the row. Entries: `water {oz}`, `food {text}`, `supps {on}`, `money {dir,date,amount,type,source,card}`,
+`prog {id,v}` (a School status), `sug {key,do,card}` (Add/Skip an Inbox suggestion), `text {from,body,app}` and
+`quick {text}` (both sorted by the Inbox with Claude). Until the Tracker has applied an entry, the widgets draw it as pending (⏳).
 
 The widgets are only as fresh as the last time the Tracker was open; each one says how long ago that was.
 
-## Setup
-1. On a computer: Google Sheets → the sheet → File → Share → Publish to web → **Widget** tab, **CSV** → Publish. Copy the link.
-2. Install `TrackerWidgets.apk` on the phone (allow installs from the app you open it with).
-3. Open **Tracker Widgets**, paste the link, tap **Save and test**.
-4. Long-press the home screen → Widgets → Tracker Widgets.
+## Widgets
+- **Health:** calories, protein, water and caffeine; +8 / +16 / bottle water buttons, Supplements, Add food.
+- **Money:** checking balance, this month's spending, recent entries; Spent / Received / Moved open the same form as the Tracker's.
+- **Today:** you and Miranda side by side: what's on now, what's next, and the rest of the day.
+- **School:** upcoming work with the Tracker's time-left chips and its status buttons (To do / Doing / Done; exams: Not started / Studying / Ready / Taken).
+- **Inbox:** what the Tracker found in email and texts, with Add (or which card paid) / Skip, and Quick add.
 
-Publishing makes the Widget tab readable by anyone who has that (long, random) link. Only that tab is published.
+## Texts (optional)
+With "Send my texts to the Tracker's Inbox" on and notification access granted, `TextListener` turns each incoming
+message notification from the texting app into a `text` entry (sender and message). Sent messages and sign-in codes are skipped.
+
+## Setup
+1. Install `TrackerWidgets.apk` on the phone (allow installs from the app you open it with).
+2. Open **Tracker Widgets**, paste the phone link (`…/exec?k=…`), tap **Save and test**.
+3. Long-press the home screen → Widgets → Tracker Widgets.
+
+A published CSV link of the Widget tab still works for reading only.
 
 ## Build and release
 Needs Java 17, the Android SDK (platform 35) and Gradle 8.9.

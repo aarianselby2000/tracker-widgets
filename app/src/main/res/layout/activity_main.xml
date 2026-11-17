@@ -29,7 +29,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
-            android:hint="https://docs.google.com/spreadsheets/d/e/…/pub?gid=7003&amp;single=true&amp;output=csv"
+            android:hint="https://script.google.com/macros/s/…/exec?k=…"
             android:inputType="textUri"
             android:textSize="14sp" />
 
@@ -39,10 +39,34 @@
             android:layout_height="wrap_content"
             android:text="Save and test" />
 
+        <Switch
+            android:id="@+id/texts"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
+            android:text="Send my texts to the Tracker's Inbox"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/texts_note"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/texts_help"
+            android:textSize="12sp"
+            android:alpha="0.75" />
+
         <Button
             android:id="@+id/open"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="18dp"
             android:text="Open the Tracker" />
 
         <Button
@@ -64,6 +88,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:fontFamily="monospace"
-            android:textSize="13sp" />
+            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

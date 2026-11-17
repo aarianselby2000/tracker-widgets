@@ -3,4 +3,7 @@
     <color name="icon_bg">#181D24</color>
     <color name="ink">#E9EDF2</color>
     <color name="muted">#9AA4B1</color>
+    <color name="line">#2A313B</color>
+    <color name="water">#5BB3F0</color>
+    <color name="on_primary">#12161B</color>
 </resources>

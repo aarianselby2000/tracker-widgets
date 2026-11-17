@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:paddingTop="3dp" android:paddingBottom="3dp">
+  <ImageView android:id="@+id/ev_bar" android:layout_width="3dp" android:layout_height="match_parent" android:layout_marginEnd="6dp" android:src="@drawable/pill" android:scaleType="fitXY" />
+  <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+    <TextView android:id="@+id/ev_time" style="@style/WLine" android:textColor="@color/muted" android:textSize="10sp" />
+    <TextView android:id="@+id/ev_title" style="@style/WLine" android:maxLines="2" />
+  </LinearLayout>
+</LinearLayout>

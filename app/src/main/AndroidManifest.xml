@@ -19,6 +19,15 @@
             </intent-filter>
         </activity>
 
+        <!-- The widgets' small forms: add food, a money entry, a quick add. -->
+        <activity
+            android:name=".EntryActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=".entry"
+            android:theme="@android:style/Theme.DeviceDefault.Dialog"
+            android:windowSoftInputMode="stateVisible|adjustResize" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"
@@ -27,21 +36,43 @@
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
 
-        <receiver android:name=".FoodWidget" android:exported="false" android:label="Tracker: Food &amp; water">
+        <receiver android:name=".ActionReceiver" android:exported="false" />
+
+        <service
+            android:name=".ListService"
+            android:exported="false"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
+        <!-- Texts for the Inbox: only does anything while the switch in the app is on and notification access is granted. -->
+        <service
+            android:name=".TextListener"
+            android:exported="true"
+            android:label="Tracker Widgets: texts to the Inbox"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <receiver android:name=".FoodWidget" android:exported="false" android:label="Tracker: Health">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_food" />
-        </receiver>
-        <receiver android:name=".DeadlinesWidget" android:exported="false" android:label="Tracker: Deadlines">
-            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
-            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_deadlines" />
         </receiver>
         <receiver android:name=".MoneyWidget" android:exported="false" android:label="Tracker: Money">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_money" />
         </receiver>
-        <receiver android:name=".ScheduleWidget" android:exported="false" android:label="Tracker: Schedule &amp; study">
+        <receiver android:name=".ScheduleWidget" android:exported="false" android:label="Tracker: Today (you &amp; Miranda)">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_schedule" />
+        </receiver>
+        <receiver android:name=".DeadlinesWidget" android:exported="false" android:label="Tracker: School">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_deadlines" />
+        </receiver>
+        <receiver android:name=".InboxWidget" android:exported="false" android:label="Tracker: Inbox (email &amp; texts)">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_inbox" />
         </receiver>
     </application>
 </manifest>
