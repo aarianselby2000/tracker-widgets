@@ -32,25 +32,27 @@ final class Timeline {
     }
 
     /** w and h in pixels; d is the screen density; now is minutes since midnight. */
-    static Bitmap draw(JSONArray me, JSONArray mi, int now, int w, int h, float d) {
+    static Bitmap draw(JSONArray me, JSONArray mi, int now, int w, int h, float d, float k) {
         Bitmap b = Bitmap.createBitmap(Math.max(1, w), Math.max(1, h), Bitmap.Config.ARGB_8888);
         Canvas cv = new Canvas(b);
         List<Ev> a = parse(me), m = parse(mi);
 
         // The hours shown: from an hour before now to the end of the day's last event (at least 8 hours, at most 15).
-        int start = Math.max(0, Math.min(now - 60, 24 * 60 - 8 * 60) / 60 * 60);
-        int last = start + 8 * 60;
+        // A tall widget (about 34 dp per hour) shows more of the day: up to 18 hours.
+        int hours = Math.max(8, Math.min(18, Math.round(h / d / (34 * k))));
+        int start = Math.max(0, Math.min(now - 60, 24 * 60 - hours * 60) / 60 * 60);
+        int last = start + hours * 60;
         for (List<Ev> l : java.util.Arrays.asList(a, m)) for (Ev e : l) if (e.s >= start - 30 || e.e > start) last = Math.max(last, Math.min(24 * 60, e.e));
-        int end = Math.min(Math.min(24 * 60, start + 15 * 60), (last + 59) / 60 * 60);
+        int end = Math.min(Math.min(24 * 60, start + Math.max(15, hours) * 60), (last + 59) / 60 * 60);
         if (end - start < 6 * 60) end = Math.min(24 * 60, start + 6 * 60);
-        float gutter = 30 * d, top = 6 * d, bottom = h - 4 * d, perMin = (bottom - top) / (end - start);
+        float gutter = 30 * d * k, top = 6 * d, bottom = h - 4 * d, perMin = (bottom - top) / (end - start);
         float colGap = 6 * d, colW = (w - gutter - colGap) / 2f;
 
         Paint line = new Paint(Paint.ANTI_ALIAS_FLAG);
         TextPaint txt = new TextPaint(Paint.ANTI_ALIAS_FLAG);
         // hour lines and labels (every 2 hours when they're tight)
         int step = perMin * 60 < 16 * d ? 120 : 60;
-        txt.setTextSize(9 * d);
+        txt.setTextSize(9 * d * k);
         txt.setColor(MUTED);
         txt.setTextAlign(Paint.Align.RIGHT);
         for (int t = start; t <= end; t += 60) {
@@ -64,8 +66,8 @@ final class Timeline {
         line.setColor(0x332A313B);
         cv.drawLine(gutter + colW + colGap / 2, top, gutter + colW + colGap / 2, bottom, line);
 
-        column(cv, a, gutter, colW, top, perMin, start, end, now, d);
-        column(cv, m, gutter + colW + colGap, colW, top, perMin, start, end, now, d);
+        column(cv, a, gutter, colW, top, perMin, start, end, now, d * k, d);
+        column(cv, m, gutter + colW + colGap, colW, top, perMin, start, end, now, d * k, d);
 
         // now: the Tracker's red line with a dot, across both columns, and the time in the hour column
         if (now >= start && now <= end) {
@@ -77,13 +79,13 @@ final class Timeline {
             cv.drawCircle(gutter, y, 4.5f * d, line);
             txt.setColor(NOW);
             txt.setTypeface(Typeface.DEFAULT_BOLD);
-            txt.setTextSize(8.5f * d);
+            txt.setTextSize(8.5f * d * k);
             cv.drawText(Widgets.clock(now).replace(" AM", "").replace(" PM", ""), gutter - 7 * d, y + 3 * d, txt);
         }
         return b;
     }
 
-    private static void column(Canvas cv, List<Ev> evs, float x0, float colW, float top, float perMin, int start, int end, int now, float d) {
+    private static void column(Canvas cv, List<Ev> evs, float x0, float colW, float top, float perMin, int start, int end, int now, float d, float d0) {
         lanes(evs);
         Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG), edge = new Paint(Paint.ANTI_ALIAS_FLAG);
         TextPaint title = new TextPaint(Paint.ANTI_ALIAS_FLAG), meta = new TextPaint(Paint.ANTI_ALIAS_FLAG);

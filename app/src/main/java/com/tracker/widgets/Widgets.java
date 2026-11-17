@@ -43,7 +43,10 @@ final class Widgets {
         AppWidgetManager m = AppWidgetManager.getInstance(c);
         Map<String, String> d = WidgetData.load(c);
         JSONObject w = WidgetData.w(c);
-        for (int id : m.getAppWidgetIds(new ComponentName(c, FoodWidget.class))) m.updateAppWidget(id, food(c, d, w));
+        for (int id : m.getAppWidgetIds(new ComponentName(c, FoodWidget.class))) {
+            m.updateAppWidget(id, food(c, d, w, id));
+            m.notifyAppWidgetViewDataChanged(id, R.id.food_list);
+        }
         for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) {
             m.updateAppWidget(id, money(c, d, w, id));
             m.notifyAppWidgetViewDataChanged(id, R.id.acct_stack);
@@ -63,9 +66,25 @@ final class Widgets {
 
     // ---------- Health ----------
 
-    static RemoteViews food(Context c, Map<String, String> d, JSONObject w) {
+    static RemoteViews food(Context c, Map<String, String> d, JSONObject w, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_food);
         common(c, v, d, "#health", FoodWidget.class);
+        float k = scale(c, wid);
+        title(v, k);
+        for (int id : new int[]{R.id.lbl_k, R.id.lbl_p, R.id.lbl_c, R.id.lbl_f, R.id.lbl_w}) ts(v, id, 12, k);
+        for (int id : new int[]{R.id.val_k, R.id.val_p, R.id.val_c, R.id.val_f, R.id.val_w, R.id.left_text, R.id.caf_text, R.id.btn_supps, R.id.foods_text}) ts(v, id, 11, k);
+        for (int id : new int[]{R.id.btn_w1, R.id.btn_w2, R.id.btn_w3, R.id.btn_food}) ts(v, id, 12, k);
+        // With room to spare (a tall widget), today's foods get their own list, like the Tracker's Food tab.
+        boolean tall = sizeDp(c, wid)[1] >= 340;
+        v.setViewVisibility(R.id.food_list, tall ? View.VISIBLE : View.GONE);
+        if (tall) {
+            Intent svc = new Intent(c, ListService.class).putExtra("kind", "foods").putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
+            svc.setData(Uri.parse("tracker://list/foods/" + wid));
+            v.setRemoteAdapter(R.id.food_list, svc);
+            v.setEmptyView(R.id.food_list, R.id.foods_text);
+            Intent open = new Intent(c, OpenActivity.class).putExtra("section", "#health");
+            v.setPendingIntentTemplate(R.id.food_list, PendingIntent.getActivity(c, 7300, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
+        }
         JSONObject h = w.optJSONObject("h");
         Double kcal = h != null ? opt(h, "kcal") : num(d.get("kcal")), kcalT = h != null ? opt(h, "kcalT") : num(d.get("kcal_target"));
         Double p = h != null ? opt(h, "p") : num(d.get("protein")), pT = h != null ? opt(h, "pT") : num(d.get("protein_target"));
@@ -100,7 +119,7 @@ final class Widgets {
             JSONArray x = foods.optJSONArray(i);
             if (x != null) f.append(f.length() > 0 ? " · " : "").append(x.optString(0)).append(x.optInt(1) > 0 ? " " + x.optInt(1) : "");
         }
-        v.setTextViewText(R.id.foods_text, f.length() == 0 ? "No food logged today" : f.toString());
+        v.setTextViewText(R.id.foods_text, f.length() == 0 || tall ? "No food logged today" : f.toString());
         int bottle = h != null ? h.optInt("bottle", 40) : 40;
         v.setTextViewText(R.id.btn_w3, "+" + bottle + " oz");
         v.setOnClickPendingIntent(R.id.btn_w1, act(c, "water", "oz", "8"));
@@ -121,6 +140,11 @@ final class Widgets {
     static RemoteViews money(Context c, Map<String, String> d, JSONObject w, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_money);
         common(c, v, d, "#money", MoneyWidget.class);
+        float k = scale(c, wid);
+        title(v, k);
+        ts(v, R.id.spent_text, 12, k);
+        for (int id : new int[]{R.id.tab_0, R.id.tab_1, R.id.tab_2}) ts(v, id, 12, k);
+        for (int id : new int[]{R.id.btn_out, R.id.btn_in, R.id.btn_move}) ts(v, id, 12, k);
         JSONObject m = w.optJSONObject("m");
         Double spent = m != null ? opt(m, "spent") : num(d.get("month_spent"));
         for (JSONObject e : Phone.pendingOf(c, "money"))
@@ -152,6 +176,12 @@ final class Widgets {
     static RemoteViews schedule(Context c, Map<String, String> d, JSONObject w, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_schedule);
         common(c, v, d, "#schedule", ScheduleWidget.class);
+        float k = scale(c, wid);
+        title(v, k);
+        ts(v, R.id.name_me, 13, k); ts(v, R.id.name_mi, 13, k);
+        ts(v, R.id.now_me, 12, k); ts(v, R.id.now_mi, 12, k);
+        ts(v, R.id.next_me, 10, k); ts(v, R.id.next_mi, 10, k);
+        ts(v, R.id.study_text, 11, k);
         LocalDate today = LocalDate.now();
         v.setTextViewText(R.id.title_text, "TODAY · " + today.format(DateTimeFormatter.ofPattern("EEE M/d", Locale.US)).toUpperCase(Locale.US));
         JSONObject s = w.optJSONObject("s");
@@ -166,12 +196,12 @@ final class Widgets {
         nowNext(v, s != null ? s.optJSONArray("me") : null, nowMin, R.id.now_me, R.id.next_me, "Miranda", studying ? s.optJSONArray("nowMe") : null);
         nowNext(v, s != null ? s.optJSONArray("mi") : null, nowMin, R.id.now_mi, R.id.next_mi, "Aarian", null);
         // The day as the Tracker draws it, sized to this widget (its height minus the header and the two cards).
-        android.os.Bundle o = AppWidgetManager.getInstance(c).getAppWidgetOptions(wid);
+        int[] sz = sizeDp(c, wid);
         float dens = Math.min(2.75f, c.getResources().getDisplayMetrics().density);
-        int wDp = Math.max(160, o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 300)) - 26;
-        int hDp = Math.max(80, o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 300) - 150 - (note.isEmpty() ? 0 : 14));
+        int wDp = Math.max(160, sz[0]) - 26;
+        int hDp = Math.max(80, sz[1] - Math.round(150 * k) - (note.isEmpty() ? 0 : 14));
         v.setImageViewBitmap(R.id.timeline, Timeline.draw(s != null ? s.optJSONArray("me") : null, s != null ? s.optJSONArray("mi") : null,
-                nowMin, Math.round(wDp * dens), Math.round(hDp * dens), dens));
+                nowMin, Math.round(wDp * dens), Math.round(hDp * dens), dens, k));
         String st = study == null ? "" : "Studied today: " + hm(study.optInt(0)) + (studying ? " · studying now" : "");
         v.setTextViewText(R.id.study_text, st);
         return v;
@@ -200,6 +230,7 @@ final class Widgets {
     static RemoteViews school(Context c, Map<String, String> d, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_deadlines);
         common(c, v, d, "#school", DeadlinesWidget.class);
+        title(v, scale(c, wid));
         list(c, v, wid, R.id.assign_list, R.id.assign_empty, "assign");
         return v;
     }
@@ -209,12 +240,38 @@ final class Widgets {
     static RemoteViews inbox(Context c, Map<String, String> d, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_inbox);
         common(c, v, d, "#inbox", InboxWidget.class);
+        float k = scale(c, wid);
+        title(v, k);
+        ts(v, R.id.btn_quick, 12, k);
         list(c, v, wid, R.id.inbox_list, R.id.inbox_empty, "inbox");
         v.setOnClickPendingIntent(R.id.btn_quick, entry(c, "quick", null, false));
         return v;
     }
 
     // ---------- shared parts ----------
+
+    /** This widget's size in dp: its narrowest width and tallest height (what it has in portrait). */
+    static int[] sizeDp(Context c, int wid) {
+        android.os.Bundle o = AppWidgetManager.getInstance(c).getAppWidgetOptions(wid);
+        int w = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0), h = o.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 0);
+        return new int[]{w > 0 ? w : 300, h > 0 ? h : 260};
+    }
+
+    /** How much larger to draw than the standard 4×3 size: 1 normally, up to 1.35 when a widget gets the whole screen. */
+    static float scale(Context c, int wid) {
+        int[] s = sizeDp(c, wid);
+        float k = Math.min(s[1] / 280f, s[0] / 290f);
+        return Math.max(1f, Math.min(1.35f, k));
+    }
+
+    static void ts(RemoteViews v, int id, float sp, float k) {
+        v.setTextViewTextSize(id, android.util.TypedValue.COMPLEX_UNIT_SP, sp * k);
+    }
+
+    private static void title(RemoteViews v, float k) {
+        ts(v, R.id.title_text, 15, k);
+        ts(v, R.id.updated_text, 10, Math.min(k, 1.15f));
+    }
 
     /** A scrolling list filled by ListService; its buttons all go to ActionReceiver. */
     private static void list(Context c, RemoteViews v, int wid, int listId, int emptyId, String kind) {

@@ -22,7 +22,7 @@ import java.util.Set;
 public class ListService extends RemoteViewsService {
     @Override
     public RemoteViewsFactory onGetViewFactory(Intent intent) {
-        return new Factory(getApplicationContext(), intent.getStringExtra("kind"));
+        return new Factory(getApplicationContext(), intent.getStringExtra("kind"), intent.getIntExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_ID, 0));
     }
 
     static final Map<String, String> CAT = new HashMap<>();
@@ -54,7 +54,10 @@ public class ListService extends RemoteViewsService {
         final String kind;
         final List<JSONArray> rows = new ArrayList<>();
 
-        Factory(Context c, String kind) { this.c = c; this.kind = kind == null ? "" : kind; }
+        final int wid;
+        float k = 1;
+
+        Factory(Context c, String kind, int wid) { this.c = c; this.kind = kind == null ? "" : kind; this.wid = wid; }
 
         @Override public void onCreate() {}
         @Override public void onDestroy() {}
@@ -67,6 +70,7 @@ public class ListService extends RemoteViewsService {
         @Override
         public void onDataSetChanged() {
             rows.clear();
+            k = wid != 0 ? Widgets.scale(c, wid) : 1;
             JSONObject w = WidgetData.w(c);
             if (kind.equals("assign")) {
                 JSONArray a = w.optJSONArray("a");
@@ -77,6 +81,13 @@ public class ListService extends RemoteViewsService {
                     try { if (set.containsKey(r.optString(0))) r.put(5, set.get(r.optString(0))); } catch (Exception ignored) {}
                     rows.add(r);
                 }
+            } else if (kind.equals("foods")) {
+                // Typed or photographed on the phone and not estimated yet, then today's foods, newest first.
+                for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) rows.add(new JSONArray().put("⏳ Photo, read when the Tracker opens").put(-1).put("").put(-1));
+                for (JSONObject e : Phone.pendingOf(c, "food")) rows.add(new JSONArray().put("⏳ " + e.optString("text")).put(-1).put(e.optString("hm")).put(-1));
+                JSONObject h = w.optJSONObject("h");
+                JSONArray f = h != null ? h.optJSONArray("foods") : null;
+                for (int i = f == null ? -1 : f.length() - 1; i >= 0; i--) if (f.optJSONArray(i) != null) rows.add(f.optJSONArray(i));
             } else if (kind.equals("acct")) {
                 JSONObject m = w.optJSONObject("m");
                 JSONArray a = m != null ? m.optJSONArray("acc") : null;
@@ -102,7 +113,27 @@ public class ListService extends RemoteViewsService {
             if (kind.equals("assign")) return assign(r);
             if (kind.equals("inbox")) return inbox(r);
             if (kind.equals("acct")) return account(r.optJSONObject(0));
+            if (kind.equals("foods")) return food(r);
             return event(r);
+        }
+
+        /** [name, kcal, "HH:MM", protein g] like a row in the Tracker's food log. */
+        RemoteViews food(JSONArray r) {
+            RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.item_food);
+            String at = r.optString(2);
+            String t = "";
+            if (at.matches("\\d{1,2}:\\d{2}")) { String[] p = at.split(":"); t = Widgets.clock(Integer.parseInt(p[0]) * 60 + Integer.parseInt(p[1])); }
+            v.setTextViewText(R.id.food_time, t.replace(" AM", "a").replace(" PM", "p"));
+            v.setTextViewText(R.id.food_name, r.optString(0));
+            int kc = r.optInt(1, -1), pr = r.optInt(3, -1);
+            v.setTextViewText(R.id.food_kcal, kc >= 0 ? Widgets.fmt(kc) : "");
+            v.setTextViewText(R.id.food_p, pr > 0 ? pr + " g P" : "");
+            Widgets.ts(v, R.id.food_time, 10.5f, k);
+            Widgets.ts(v, R.id.food_name, 12, k);
+            Widgets.ts(v, R.id.food_kcal, 12, k);
+            Widgets.ts(v, R.id.food_p, 10.5f, k);
+            v.setOnClickFillInIntent(R.id.food_row, new Intent());
+            return v;
         }
 
         /** One account card (Checking, Savings or Cash), like its panel in the Tracker's Money section. */
@@ -111,6 +142,11 @@ public class ListService extends RemoteViewsService {
             String k = a.optString("k");
             int color = k.equals("savings") ? 0xFF6B9CEC : k.equals("cash") ? 0xFFE8BD34 : 0xFF55B981;
             v.setTextViewText(R.id.acct_name, a.optString("name").toUpperCase(java.util.Locale.US));
+            Widgets.ts(v, R.id.acct_name, 14, this.k);
+            Widgets.ts(v, R.id.acct_bal, 30, this.k);
+            Widgets.ts(v, R.id.acct_note, 11, this.k);
+            Widgets.ts(v, R.id.acct_recent, 11.5f, this.k);
+            Widgets.ts(v, R.id.acct_pill, 11, this.k);
             v.setTextColor(R.id.acct_name, color);
             v.setOnClickFillInIntent(R.id.acct_card, new Intent());
             // Entries added on the phone that the Tracker hasn't applied yet move the balance here too.
@@ -195,6 +231,9 @@ public class ListService extends RemoteViewsService {
             String id = r.optString(0), due = r.optString(3), prog = r.optString(5, "todo");
             boolean exam = "e".equals(r.optString(4));
             v.setTextViewText(R.id.name_text, r.optString(1));
+            Widgets.ts(v, R.id.name_text, 13, k);
+            Widgets.ts(v, R.id.cls_text, 11, k);
+            for (int tid : new int[]{R.id.chip_t, R.id.s0_t, R.id.s1_t, R.id.s2_t, R.id.s3_t}) Widgets.ts(v, tid, 11, k);
             String cls = Widgets.shortClass(r.optString(2));
             v.setTextViewText(R.id.cls_text, cls + (due.isEmpty() ? "" : (cls.isEmpty() ? "" : " · ") + Widgets.dueLabel(due)) + (exam ? " · exam" : ""));
             // The time-left chip, colored by how close it is.
@@ -229,6 +268,10 @@ public class ListService extends RemoteViewsService {
             Widgets.pill(v, R.id.tag, R.id.tag_bg, R.id.tag_t, tag[0], tc, tc);
             v.setInt(R.id.tag_bg, "setImageAlpha", 60);
             v.setTextViewText(R.id.what_text, r.optString(2));
+            Widgets.ts(v, R.id.what_text, 12.5f, k);
+            Widgets.ts(v, R.id.from_text, 10.5f, k);
+            Widgets.ts(v, R.id.why_text, 10.5f, k);
+            for (int id : new int[]{R.id.tag_t, R.id.b0_t, R.id.b1_t, R.id.b2_t, R.id.b3_t, R.id.b4_t}) Widgets.ts(v, id, 11, k);
             String why = r.optString(3), from = r.optString(4);
             v.setTextViewText(R.id.from_text, "  " + from);
             v.setTextViewText(R.id.why_text, why);

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:id="@+id/food_row" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:paddingBottom="4dp">
+  <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:background="@drawable/item_bg" android:orientation="horizontal" android:gravity="center_vertical" android:paddingStart="9dp" android:paddingEnd="9dp" android:paddingTop="6dp" android:paddingBottom="6dp">
+    <TextView android:id="@+id/food_time" android:layout_width="wrap_content" android:layout_height="wrap_content" android:minWidth="38dp" android:textColor="@color/muted" android:textSize="10.5sp" />
+    <TextView android:id="@+id/food_name" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="@color/ink" android:textSize="12sp" android:maxLines="2" android:ellipsize="end" />
+    <TextView android:id="@+id/food_kcal" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="8dp" android:textColor="#F0A040" android:textSize="12sp" android:textStyle="bold" />
+    <TextView android:id="@+id/food_p" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginStart="6dp" android:textColor="#6B9CEC" android:textSize="10.5sp" />
+  </LinearLayout>
+</LinearLayout>
