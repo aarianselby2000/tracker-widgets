@@ -47,11 +47,69 @@ public class MainActivity extends Activity {
             show.setText(open ? "WHAT THE WIDGETS SEE  ▴" : "WHAT THE WIDGETS SEE  ▾");
         });
         showValues(null);
+        // The phone's own widgets: each asks for its access only when you tap it.
+        findViewById(R.id.perm_weather_b).setOnClickListener(v -> requestPermissions(new String[]{android.Manifest.permission.ACCESS_COARSE_LOCATION}, 11));
+        findViewById(R.id.perm_calendar_b).setOnClickListener(v -> requestPermissions(new String[]{android.Manifest.permission.READ_CALENDAR}, 12));
+        findViewById(R.id.perm_screen_b).setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)));
+        findViewById(R.id.perm_steps_b).setOnClickListener(v -> {
+            try {
+                if (StepsHC.available(this)) startActivityForResult(StepsHC.permissionIntent(this), 13);
+                else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata")));
+            } catch (Throwable t) {
+                ((TextView) findViewById(R.id.perm_steps_t)).setText("Couldn't open Health Connect (" + t.getClass().getSimpleName() + ").");
+            }
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int req, String[] perms, int[] res) {
+        super.onRequestPermissionsResult(req, perms, res);
+        afterExtras(req == 11);
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req == 13) afterExtras(false);
+    }
+
+    /** Refresh the phone's widgets right away (steps read fine while this screen is open), then redraw. */
+    private void afterExtras(boolean weather) {
+        showExtras();
+        new Thread(() -> {
+            if (weather) Extras.refreshWeather(getApplicationContext(), true);
+            try { if (StepsHC.granted(getApplicationContext())) StepsHC.refresh(getApplicationContext()); } catch (Throwable ignored) {}
+            new Handler(Looper.getMainLooper()).post(() -> { Widgets.updateAll(this); showExtras(); });
+        }).start();
+    }
+
+    private void showExtras() {
+        boolean loc = Extras.granted(this, android.Manifest.permission.ACCESS_COARSE_LOCATION);
+        ((TextView) findViewById(R.id.perm_weather_t)).setText(loc ? "✓ Using your location" : "Newark, DE until you allow your location");
+        ((TextView) findViewById(R.id.perm_weather_b)).setText(loc ? "✓" : "Use location");
+        boolean us = Extras.usageAllowed(this);
+        ((TextView) findViewById(R.id.perm_screen_t)).setText(us ? "✓ Usage access on (stays on your phone)" : "Needs usage access: find Tracker Widgets in the list and turn it on");
+        ((TextView) findViewById(R.id.perm_screen_b)).setText(us ? "✓" : "Allow");
+        boolean cal = Extras.granted(this, android.Manifest.permission.READ_CALENDAR);
+        ((TextView) findViewById(R.id.perm_calendar_t)).setText(cal ? "✓ Reading your phone's calendars" : "Needs calendar access");
+        ((TextView) findViewById(R.id.perm_calendar_b)).setText(cal ? "✓" : "Allow");
+        boolean hc = false;
+        String hs;
+        try {
+            int st = StepsHC.status(this);
+            hc = StepsHC.granted(this);
+            hs = hc ? "✓ Connected to Health Connect" : st == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
+                    ? "Connect, then turn on Steps (and reading in the background)" : "Install or update Health Connect first";
+        } catch (Throwable t) { hs = "Health Connect isn't available here"; }
+        String err = WidgetData.prefs(this).getString("steps_err", "");
+        ((TextView) findViewById(R.id.perm_steps_t)).setText(hs + (hc && !err.isEmpty() ? '\n' + err : ""));
+        ((TextView) findViewById(R.id.perm_steps_b)).setText(hc ? "✓" : "Connect");
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+        afterExtras(false);
         // Show the saved state without treating it as a tap.
         texts.setOnCheckedChangeListener(null);
         texts.setChecked(WidgetData.prefs(this).getBoolean(TextListener.PREF_ON, false));

@@ -29,7 +29,7 @@ public abstract class BaseWidget extends AppWidgetProvider {
     @Override
     public void onReceive(Context c, Intent i) {
         super.onReceive(c, i);
-        if (Widgets.ACTION_REFRESH.equals(i.getAction())) refreshNow(c);
+        if (Widgets.ACTION_REFRESH.equals(i.getAction())) { WidgetData.prefs(c).edit().putBoolean("force_extras", true).apply(); Widgets.updateAll(c); refreshNow(c); }
         if (ACTION_TICK.equals(i.getAction())) Widgets.updateAll(c);   // moves Today's now line; no download
         if (i.getAction() != null && i.getAction().startsWith(ACTION_FLIP)) {   // Health page or Schedule day
             int id = i.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1), to = i.getIntExtra("to", 0);

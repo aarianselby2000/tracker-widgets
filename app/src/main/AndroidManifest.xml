@@ -1,8 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- The phone's own widgets, each only once you allow it in the app: weather location, calendar, screen time, steps. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
+
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="false"
@@ -44,6 +59,25 @@
             android:taskAffinity=".open"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
+        <!-- Health Connect asks this screen why the app wants steps. -->
+        <activity
+            android:name=".PrivacyActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".PrivacyActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <receiver android:name=".ActionReceiver" android:exported="false" />
 
         <service
@@ -81,6 +115,22 @@
         <receiver android:name=".InboxWidget" android:exported="false" android:label="Tracker: Inbox (email &amp; texts)">
             <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
             <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_inbox" />
+        </receiver>
+        <receiver android:name=".WeatherWidget" android:exported="false" android:label="Tracker: Weather">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_weather" />
+        </receiver>
+        <receiver android:name=".ScreenTimeWidget" android:exported="false" android:label="Tracker: Screen time">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_screen" />
+        </receiver>
+        <receiver android:name=".CalendarWidget" android:exported="false" android:label="Tracker: Calendar">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_calendar" />
+        </receiver>
+        <receiver android:name=".StepsWidget" android:exported="false" android:label="Tracker: Steps">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_steps" />
         </receiver>
     </application>
 </manifest>

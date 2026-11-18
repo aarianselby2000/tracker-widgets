@@ -48,6 +48,7 @@ final class Widgets {
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) {
             m.updateAppWidget(id, money(c, d, w, id));
+            m.notifyAppWidgetViewDataChanged(id, R.id.acct_stack);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, ScheduleWidget.class))) {
             m.updateAppWidget(id, schedule(c, d, w, id));
@@ -55,6 +56,10 @@ final class Widgets {
         for (int id : m.getAppWidgetIds(new ComponentName(c, DeadlinesWidget.class))) {
             m.updateAppWidget(id, school(c, d, id));
         }
+        for (int id : m.getAppWidgetIds(new ComponentName(c, WeatherWidget.class))) m.updateAppWidget(id, Extras.weather(c, id));
+        for (int id : m.getAppWidgetIds(new ComponentName(c, ScreenTimeWidget.class))) m.updateAppWidget(id, Extras.screen(c, id));
+        for (int id : m.getAppWidgetIds(new ComponentName(c, CalendarWidget.class))) m.updateAppWidget(id, Extras.calendar(c, id));
+        for (int id : m.getAppWidgetIds(new ComponentName(c, StepsWidget.class))) m.updateAppWidget(id, Extras.steps(c, id));
         for (int id : m.getAppWidgetIds(new ComponentName(c, InboxWidget.class))) {
             m.updateAppWidget(id, inbox(c, d, id));
             m.notifyAppWidgetViewDataChanged(id, R.id.inbox_list);
@@ -195,20 +200,14 @@ final class Widgets {
         float k = scale(c, wid);
         title(v, k);
         JSONObject m = w.optJSONObject("m");
-        JSONArray acc = m != null ? m.optJSONArray("acc") : null;
-        int n = acc == null ? 0 : acc.length(), front = n == 0 ? 0 : Math.floorMod(WidgetData.prefs(c).getInt("money_front_" + wid, 0), n);
-        // Checking, Savings and Cash as a stack of cards: the front one shows its latest entries; tap a card behind to bring it forward.
-        int[][] peeks = {{R.id.peek1, R.id.peek1_n, R.id.peek1_b}, {R.id.peek2, R.id.peek2_n, R.id.peek2_b}};
-        for (int i = 0; i < 2; i++) {
-            if (n < i + 2) { v.setViewVisibility(peeks[i][0], View.GONE); continue; }
-            int idx = (front + 1 + i) % n;
-            JSONObject a = acc.optJSONObject(idx);
-            v.setTextViewText(peeks[i][1], a.optString("name").toUpperCase(Locale.US));
-            v.setTextColor(peeks[i][1], acctColor(a.optString("k")));
-            v.setTextViewText(peeks[i][2], a.isNull("bal") ? "–" : dollars(a.optDouble("bal") + pendingEffect(c, a.optString("k"))));
-            Pages.click(c, v, peeks[i][0], "op", "acct", "wid", String.valueOf(wid), "to", String.valueOf(idx));
-        }
-        if (n > 0) frontCard(c, v, acc.optJSONObject(front), k, wid);
+        // Checking, Savings and Cash as a stack of cards: swipe up for the next one. Each card's name and balance are at
+        // its top, which is all that shows of the cards behind; its latest entries are lower down, on the front card.
+        Intent svc = new Intent(c, ListService.class).putExtra("kind", "acct").putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
+        svc.setData(Uri.parse("tracker://list/acct/" + wid));
+        v.setRemoteAdapter(R.id.acct_stack, svc);
+        v.setEmptyView(R.id.acct_stack, R.id.acct_empty);
+        Intent open = new Intent(c, OpenActivity.class).putExtra("section", "#money");
+        v.setPendingIntentTemplate(R.id.acct_stack, PendingIntent.getActivity(c, 7100, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
         Double spent = m != null ? opt(m, "spent") : num(d.get("month_spent"));
         for (JSONObject e : Phone.pendingOf(c, "money"))
             if ("out".equals(e.optString("dir")) && SPEND.contains(e.optString("type"))) spent = (spent == null ? 0 : spent) + e.optDouble("amount", 0);
@@ -227,56 +226,6 @@ final class Widgets {
         double sum = 0;
         for (JSONObject e : Phone.pendingOf(c, "money")) sum += ListService.Factory.effect(key, e.optString("dir"), e.optString("type"), e.optString("card"), e.optDouble("amount", 0));
         return sum;
-    }
-
-    /** The front card: balance, how it stands, and its latest entries (with ones from the phone first). */
-    private static void frontCard(Context c, RemoteViews v, JSONObject a, float k, int wid) {
-        String key = a.optString("k");
-        int col = acctColor(key);
-        v.setTextViewText(R.id.f_name, a.optString("name").toUpperCase(Locale.US));
-        v.setTextColor(R.id.f_name, col);
-        double pend = pendingEffect(c, key), bal = a.optDouble("bal", 0) + pend;
-        boolean has = !a.isNull("bal") && a.has("bal");
-        v.setTextViewText(R.id.f_bal, has ? (pend != 0 ? "≈ " : "") + dollars(bal) : "–");
-        v.setTextColor(R.id.f_bal, INK);
-        ts(v, R.id.f_name, 14, k);
-        ts(v, R.id.f_bal, 32, k);
-        ts(v, R.id.f_note, 11.5f, k);
-        String note = a.optString("note");
-        int bar = -1, pct = 0;
-        if (key.equals("checking") && has) {
-            double min = a.optDouble("min", 0), buf = a.optDouble("buffer", 0), room = bal - min;
-            String st = room < 0 ? "under" : room <= buf ? "close" : "ok";
-            bar = st.equals("under") ? R.id.f_bar_r : st.equals("close") ? R.id.f_bar_a : R.id.f_bar_g;
-            v.setTextColor(R.id.f_bal, st.equals("under") ? 0xFFF07070 : st.equals("close") ? 0xFFF0A040 : 0xFF55B981);
-            pct = room <= 0 ? 0 : (int) Math.round(Math.min(1, room / Math.max(min * 2, 200)) * 100);
-            note = room < 0 ? dollars(-room) + " below your minimum" : dollars(room) + " of room above your " + dollars(min) + " minimum";
-        } else if (key.equals("savings") && has && a.optDouble("goal", 0) > 0) {
-            bar = R.id.f_bar_b;
-            pct = (int) Math.round(Math.max(0, Math.min(1, bal / a.optDouble("goal"))) * 100);
-        }
-        v.setTextViewText(R.id.f_note, note);
-        for (int id : new int[]{R.id.f_bar_g, R.id.f_bar_a, R.id.f_bar_r, R.id.f_bar_b}) v.setViewVisibility(id, id == bar ? View.VISIBLE : View.GONE);
-        v.setViewVisibility(R.id.f_bars, bar == -1 ? View.GONE : View.VISIBLE);
-        if (bar != -1) v.setProgressBar(bar, 100, pct, false);
-        v.removeAllViews(R.id.f_recent);
-        List<JSONArray> rows = new java.util.ArrayList<>();
-        for (JSONObject e : Phone.pendingOf(c, "money")) {
-            double eff = ListService.Factory.effect(key, e.optString("dir"), e.optString("type"), e.optString("card"), e.optDouble("amount", 0));
-            if (eff != 0) rows.add(new JSONArray().put("row").put("⏳ " + e.optString("source")).put(signed(eff)).put(e.optString("type") + " · waiting for the Tracker").put(eff < 0 ? "#F07070" : "#55B981").put(eff < 0 ? "#F07070" : "#55B981"));
-        }
-        JSONArray r = a.optJSONArray("recent");
-        for (int i = 0; r != null && i < r.length(); i++) {
-            JSONArray x = r.optJSONArray(i);
-            if (x == null) continue;
-            double amt = x.optDouble(2, 0);
-            rows.add(new JSONArray().put("row").put(x.optString(1)).put(signed(amt)).put(x.optString(3) + " · " + x.optString(0)).put(amt < 0 ? "#F07070" : "#55B981").put(amt < 0 ? "#F07070" : "#55B981"));
-        }
-        int[] sz = sizeDp(c, wid);
-        int fit = (int) Math.max(1, (sz[1] - (26 + 54 + 150 + 30 + 60) * k - 30) / (46 * k));
-        for (int i = 0; i < Math.min(fit, rows.size()); i++) v.addView(R.id.f_recent, Pages.row(c, rows.get(i), k));
-        if (rows.isEmpty()) v.addView(R.id.f_recent, Pages.note(c, "No entries yet.", k));
-        v.setViewVisibility(R.id.f_recent_h, View.VISIBLE);
     }
 
     // ---------- Schedule: Aarian and Miranda side by side ----------
@@ -311,8 +260,21 @@ final class Widgets {
             nowNext(v, s.optJSONArray("mi"), nowMin, R.id.now_mi, R.id.next_mi, "Aarian", null);
         }
         int[] sz = sizeDp(c, wid);
-        float h = Math.max(120, sz[1] - (26 + 28 + 18 + 96) * k - (off == 0 ? 70 * k : 0) - 34);
-        if (day != null) Grid.build(c, v, day.optJSONArray("me"), day.optJSONArray("mi"), off == 0 ? nowMin : -1, Math.max(150, sz[0] - 26), h, k);
+        float h = Math.max(150, sz[1] - (26 + 28 + 18 + 84 + 16) * k - (off == 0 ? 70 * k : 0) - 34);
+        int end = day != null ? Grid.build(c, v, day.optJSONArray("me"), day.optJSONArray("mi"), off == 0 ? nowMin : -1, Math.max(150, sz[0] - 26), h, k) : 24 * 60;
+        // What's after the last hour that fits, in one line.
+        StringBuilder later = new StringBuilder();
+        for (String who : new String[]{"me", "mi"}) {
+            JSONArray evs = day != null ? day.optJSONArray(who) : null;
+            for (int i = 0; evs != null && i < evs.length(); i++) {
+                JSONArray e = evs.optJSONArray(i);
+                if (e == null || e.optInt(0) < end || "sleep".equals(e.optString(3))) continue;
+                String item = e.optString(2) + " " + clock(e.optInt(0));
+                if (later.indexOf(item) < 0) later.append(later.length() > 0 ? " · " : "").append(item);
+            }
+        }
+        v.setTextViewText(R.id.grid_more, "Later: " + later);
+        v.setViewVisibility(R.id.grid_more, later.length() > 0 ? View.VISIBLE : View.GONE);
         sleepStudy(c, v, s, k);
         return v;
     }

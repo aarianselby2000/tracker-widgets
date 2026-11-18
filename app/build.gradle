@@ -1,4 +1,7 @@
-plugins { id 'com.android.application' }
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+}
 
 android {
     namespace 'com.tracker.widgets'
@@ -7,8 +10,8 @@ android {
         applicationId 'com.tracker.widgets'
         minSdk 28
         targetSdk 35
-        versionCode 14
-        versionName '2.3'
+        versionCode 15
+        versionName '2.4'
         // owner/repo whose GitHub releases hold new versions (see Updater.java)
         buildConfigField 'String', 'UPDATE_REPO', '"' + (project.findProperty('updateRepo') ?: 'aarianselby2000/tracker-widgets') + '"'
     }
@@ -17,9 +20,12 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+    kotlinOptions { jvmTarget = '17' }
 }
 
 dependencies {
     implementation 'androidx.work:work-runtime:2.9.1'
     implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.health.connect:connect-client:1.1.0-beta01'
+    implementation 'com.google.guava:guava:33.3.1-android'   // Health Connect brings an empty ListenableFuture that WorkManager needs for real
 }

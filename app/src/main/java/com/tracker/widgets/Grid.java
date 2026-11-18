@@ -29,14 +29,18 @@ final class Grid {
     }
 
     /** now is minutes since midnight, or -1 for a day other than today. Sizes are in dp. */
-    static void build(Context c, RemoteViews v, JSONArray me, JSONArray mi, int now, float wDp, float hDp, float k) {
+    /** Returns the minute the grid ends at, so the widget can list what comes after it. */
+    static int build(Context c, RemoteViews v, JSONArray me, JSONArray mi, int now, float wDp, float hDp, float k) {
         v.removeAllViews(R.id.grid);
         List<Ev> a = parse(me), m = parse(mi);
-        // The whole day: from 7 AM (or the first thing that isn't sleep, if earlier) to midnight.
-        int start = 7 * 60, end = 24 * 60;
-        for (List<Ev> l : java.util.Arrays.asList(a, m)) for (Ev e : l) if (!"sleep".equals(e.cat)) start = Math.min(start, e.s / 60 * 60);
-        if (now >= 0 && now < start) start = Math.max(0, (now - 30) / 60 * 60);
-        if (Build.VERSION.SDK_INT < 31) { lists(c, v, a, m, now, k); return; }
+        // As many hours as fit at about 30 dp each (so blocks aren't squished): today from an hour before now,
+        // another day from its first event (or 7 AM); a window that would run past midnight starts earlier instead.
+        int first = 7 * 60;
+        for (List<Ev> l : java.util.Arrays.asList(a, m)) for (Ev e : l) if (!"sleep".equals(e.cat)) first = Math.min(first, e.s / 60 * 60);
+        int hours = Math.max(6, Math.min(24, (int) ((hDp - 10) / (30 * k))));
+        int base = now >= 0 ? Math.max(0, (now - 60) / 60 * 60) : first;
+        int start = Math.max(0, Math.min(base, 24 * 60 - hours * 60)), end = Math.min(24 * 60, start + hours * 60);
+        if (Build.VERSION.SDK_INT < 31) { lists(c, v, a, m, now, k); return 24 * 60; }
         String pkg = c.getPackageName();
         float gutter = 28, top = 6, bottom = hDp - 4, perMin = (bottom - top) / (end - start);
         float colGap = 5, colW = (wDp - gutter - colGap) / 2f;
@@ -58,6 +62,7 @@ final class Grid {
             nl.setViewLayoutMargin(R.id.nowline, RemoteViews.MARGIN_LEFT, 4, TypedValue.COMPLEX_UNIT_DIP);
             v.addView(R.id.grid, nl);
         }
+        return end;
     }
 
     @androidx.annotation.RequiresApi(31)

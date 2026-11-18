@@ -23,4 +23,8 @@
 <color name="now">#FF5A5F</color>
 <color name="grid">#2A313B</color>
 <color name="target">#99E9EDF2</color>
+<color name="weather">#5BB3F0</color>
+<color name="screen">#A78BF0</color>
+<color name="calendar">#F0AC55</color>
+<color name="steps">#74C35E</color>
 </resources>
