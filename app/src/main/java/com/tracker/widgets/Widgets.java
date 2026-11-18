@@ -69,7 +69,14 @@ final class Widgets {
         for (int id : m.getAppWidgetIds(new ComponentName(c, WeatherWidget.class))) m.updateAppWidget(id, Extras.weather(c, id));
         for (int id : m.getAppWidgetIds(new ComponentName(c, ScreenTimeWidget.class))) m.updateAppWidget(id, Extras.screen(c, id));
         for (int id : m.getAppWidgetIds(new ComponentName(c, CalendarWidget.class))) m.updateAppWidget(id, Extras.calendar(c, id));
-        for (int id : m.getAppWidgetIds(new ComponentName(c, StepsWidget.class))) m.updateAppWidget(id, Extras.steps(c, id));
+        for (int id : m.getAppWidgetIds(new ComponentName(c, StepsWidget.class))) {
+            m.updateAppWidget(id, Extras.steps(c, id));
+            String ss = Integer.toHexString((WidgetData.prefs(c).getString("steps", "") + "|" + Extras.goal(c) + "|" + scale(c, id)).hashCode()), sk = "steps_sig_" + id;
+            if (!ss.equals(WidgetData.prefs(c).getString(sk, ""))) {   // reload the past days only when they changed
+                WidgetData.prefs(c).edit().putString(sk, ss).apply();
+                m.notifyAppWidgetViewDataChanged(id, R.id.sp_days);
+            }
+        }
         for (int id : m.getAppWidgetIds(new ComponentName(c, InboxWidget.class))) {
             m.updateAppWidget(id, inbox(c, d, id));
             m.notifyAppWidgetViewDataChanged(id, R.id.inbox_list);
@@ -471,7 +478,7 @@ final class Widgets {
     }
 
     /** A scrolling list filled by ListService; its buttons all go to ActionReceiver. */
-    private static void list(Context c, RemoteViews v, int wid, int listId, int emptyId, String kind) {
+    static void list(Context c, RemoteViews v, int wid, int listId, int emptyId, String kind) {
         Intent svc = new Intent(c, ListService.class).putExtra("kind", kind).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
         svc.setData(Uri.parse("tracker://list/" + kind + "/" + wid));
         v.setRemoteAdapter(listId, svc);

@@ -10,6 +10,7 @@ import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
 import androidx.health.connect.client.records.ExerciseSessionRecord
 import androidx.health.connect.client.records.StepsRecord
 import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
+import androidx.health.connect.client.request.AggregateGroupByPeriodRequest
 import androidx.health.connect.client.request.AggregateRequest
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
@@ -85,23 +86,27 @@ object StepsHC {
                 } else {
                     val z = ZoneId.systemDefault()
                     val today = LocalDate.now()
-                    val metrics = mutableSetOf<AggregateMetric<*>>(StepsRecord.COUNT_TOTAL)
-                    if (got.contains(ACTIVE)) metrics.add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
-                    if (got.contains(TOTAL)) metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL)
                     val out = JSONArray()
                     val sources = linkedSetOf<String>()
-                    val weekStart = today.minusDays(6).atStartOfDay(z).toInstant()
-                    for (o in client.aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL), TimeRangeFilter.between(weekStart, Instant.now()))).dataOrigins)
-                        sources.add(NAMES[o.packageName] ?: o.packageName.substringAfterLast('.'))
-                    for (i in 6 downTo 0) {
-                        val d = today.minusDays(i.toLong())
-                        val end = if (i == 0) Instant.now() else d.plusDays(1).atStartOfDay(z).toInstant()
-                        val res = client.aggregate(AggregateRequest(metrics, TimeRangeFilter.between(d.atStartOfDay(z).toInstant(), end)))
-                        val row = JSONArray().put(d.toString()).put(res[StepsRecord.COUNT_TOTAL] ?: 0L)
-                        row.put(if (got.contains(ACTIVE)) Math.round(res[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0) else -1L)
-                        row.put(if (got.contains(TOTAL)) Math.round(res[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0) else -1L)
-                        out.put(row)
+                    // The last 30 days, one bucket per day. A day with nothing in Health Connect has no count: kept as -1 ("no data").
+                    val range = TimeRangeFilter.between(today.minusDays(29).atStartOfDay(), java.time.LocalDateTime.now())
+                    val stepsBy = HashMap<String, Long>()
+                    for (bk in client.aggregateGroupByPeriod(AggregateGroupByPeriodRequest(setOf(StepsRecord.COUNT_TOTAL), range, java.time.Period.ofDays(1)))) {
+                        val n = bk.result[StepsRecord.COUNT_TOTAL] ?: continue
+                        stepsBy[bk.startTime.toLocalDate().toString()] = n
+                        for (o in bk.result.dataOrigins) sources.add(NAMES[o.packageName] ?: o.packageName.substringAfterLast('.'))
                     }
+                    val kcalBy = HashMap<String, Long>()
+                    if (got.contains(ACTIVE))
+                        for (bk in client.aggregateGroupByPeriod(AggregateGroupByPeriodRequest(setOf(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL), range, java.time.Period.ofDays(1)))) {
+                            val e = bk.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL] ?: continue
+                            kcalBy[bk.startTime.toLocalDate().toString()] = Math.round(e.inKilocalories)
+                        }
+                    for (i in 29 downTo 0) {
+                        val d = today.minusDays(i.toLong()).toString()
+                        out.put(JSONArray().put(d).put(stepsBy[d] ?: -1L).put(if (got.contains(ACTIVE)) kcalBy[d] ?: 0L else -1L).put(-1L))
+                    }
+                    p.edit().putBoolean("steps_all", got.containsAll(PERMISSIONS)).apply()
                     val dayStart = today.atStartOfDay(z).toInstant()
                     p.edit().putString("steps", out.toString()).putLong("steps_at", System.currentTimeMillis())
                         .putString("steps_src", sources.joinToString(" + ")).putLong("steps_active_min", activeMinutes(client, got, dayStart))

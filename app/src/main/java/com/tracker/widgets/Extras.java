@@ -429,6 +429,7 @@ final class Extras {
             v.setViewLayoutHeight(R.id.sp_ring, r, TypedValue.COMPLEX_UNIT_DIP);
         }
         int goal = goal(c);
+        Widgets.list(c, v, wid, R.id.sp_days, R.id.sp_days_empty, "steps");   // past days, scrolling (ListService kind "steps")
         String raw = p.getString("steps", ""), err = p.getString("steps_err", "");
         // "BG": Health Connect wouldn't let the 30-minute refresh read (only open apps may, unless you allow background reading).
         boolean stale = System.currentTimeMillis() - at > 2 * 3600_000L;
@@ -443,7 +444,7 @@ final class Extras {
             JSONArray days = new JSONArray(raw);   // [[date, steps, active kcal, total kcal], …] oldest first, today last (-1 = not allowed)
             JSONArray t = days.getJSONArray(days.length() - 1);
             boolean isToday = LocalDate.now().toString().equals(t.optString(0));
-            long n = isToday ? t.optLong(1) : 0;
+            long n = isToday ? Math.max(0, t.optLong(1)) : 0;
             int pct = (int) Math.min(999, n * 100 / goal);
             boolean hit = n >= goal;
             v.setTextViewText(R.id.sp_total, isToday ? String.format(Locale.US, "%,d", n) : "–");
@@ -469,7 +470,7 @@ final class Extras {
             if (nt.isEmpty() && none)
                 nt = "Health Connect has no steps from Samsung Health yet. In Tracker Widgets, tap Check Samsung Health's access, allow Samsung Health to share "
                         + "Steps and Active calories, then open Samsung Health once so it sends them, and tap ⟳ Sync.";
-            else if (nt.isEmpty() && t.optLong(2, -1) < 0)
+            else if (nt.isEmpty() && !p.getBoolean("steps_all", true))
                 nt = "For calories and active time, open Tracker Widgets and tap More next to Steps.";
             // Health Connect's steps for today start late (Samsung Health shares what it counts after it's connected): say so.
             long first = p.getLong("steps_first", 0);
@@ -479,16 +480,12 @@ final class Extras {
                         + " on, so this is short of Samsung Health's count. Samsung Health shares what it counts after it was connected, so tomorrow should match. "
                         + "Opening Samsung Health sends its newest steps.";
             note(v, R.id.sp_note, nt);
-            v.setTextViewText(R.id.sp_days_h, "LAST 7 DAYS" + (src.isEmpty() ? "" : "  ·  FROM " + src.toUpperCase(Locale.US)));
-            v.removeAllViews(R.id.sp_days);
-            for (int i = days.length() - 2; i >= 0; i--) {
-                JSONArray x = days.getJSONArray(i);
-                long s = x.optLong(1);
-                LocalDate dd = LocalDate.parse(x.optString(0));
-                String lab = dd.equals(LocalDate.now().minusDays(1)) ? "Yesterday" : dd.format(DateTimeFormatter.ofPattern("EEE M/d", Locale.US));
-                v.addView(R.id.sp_days, Pages.row(c, new JSONArray().put("bar").put(lab).put(String.format(Locale.US, "%,d", s))
-                        .put((int) Math.min(100, s * 100 / goal)).put(s >= goal ? "g" : "b"), k));
-            }
+            // The past days' heading: how many, the average of the days Health Connect has, and where the steps come from.
+            long sum = 0;
+            int nd = 0, past = days.length() - (isToday ? 1 : 0);
+            for (int i = 0; i < past; i++) { long st = days.getJSONArray(i).optLong(1, -1); if (st >= 0) { sum += st; nd++; } }
+            v.setTextViewText(R.id.sp_days_h, "PAST " + past + " DAYS" + (nd > 0 ? String.format(Locale.US, "  ·  AVG %,d", sum / nd) : "")
+                    + (src.isEmpty() ? "" : "  ·  " + src.toUpperCase(Locale.US)));
         } catch (Exception e) {
             note(v, R.id.sp_note, "Couldn't read your steps. Tap ⟳ Sync.");
         }

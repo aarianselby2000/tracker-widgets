@@ -110,6 +110,14 @@ public class ListService extends RemoteViewsService {
                     rows.add(new JSONArray().put(x.optString(0)).put(x.optInt(1)).put("").put(x.optInt(2)).put(x.optInt(3)).put(x.optInt(4))
                             .put(x.optString(5)).put("").put("recent"));
                 }
+            } else if (kind.equals("steps")) {
+                // The Steps widget's past days, newest first (today is at the top of the widget, so it's left out).
+                try {
+                    JSONArray days = new JSONArray(WidgetData.prefs(c).getString("steps", "[]"));
+                    int last = days.length() - 1;
+                    if (last >= 0 && java.time.LocalDate.now().toString().equals(days.getJSONArray(last).optString(0))) last--;
+                    for (int i = last; i >= 0; i--) rows.add(days.getJSONArray(i));
+                } catch (Exception ignored) {}
             } else if (kind.startsWith("pages:")) {
                 JSONObject pg = w.optJSONObject("pages");
                 JSONArray a = pg != null ? pg.optJSONArray(kind.substring(6)) : null;
@@ -149,6 +157,7 @@ public class ListService extends RemoteViewsService {
             if (kind.equals("inbox")) return inbox(r);
             if (kind.equals("acct")) return account(r.optJSONObject(0), pos);
             if (kind.equals("foods")) return foodRow(r);
+            if (kind.equals("steps")) return stepDay(r);
             if (kind.equals("health")) return healthPage(r.optString(0));
             if (kind.equals("days")) return dayPage(r.optJSONObject(0), pos, rows.size());
             return event(r);
@@ -264,6 +273,17 @@ public class ListService extends RemoteViewsService {
                 b.append(" · " + p + " g P");
                 b.setSpan(new android.text.style.ForegroundColorSpan(0xFF6B9CEC), s2, b.length(), 0);
             }
+        }
+
+        /** One past day in the Steps widget: [date, steps (-1 = no data), …] as a bar toward the goal. */
+        RemoteViews stepDay(JSONArray x) {
+            int goal = Extras.goal(c);
+            long s = x.optLong(1, -1);
+            java.time.LocalDate dd = java.time.LocalDate.parse(x.optString(0));
+            String lab = dd.equals(java.time.LocalDate.now().minusDays(1)) ? "Yesterday" : dd.format(java.time.format.DateTimeFormatter.ofPattern("EEE M/d", java.util.Locale.US));
+            if (s < 0) return Pages.row(c, new JSONArray().put("bar").put(lab).put("no data").put(0).put("b"), k);
+            return Pages.row(c, new JSONArray().put("bar").put(lab).put(String.format(java.util.Locale.US, "%,d", s))
+                    .put((int) Math.min(100, s * 100 / goal)).put(s >= goal ? "g" : "b"), k);
         }
 
         /** A food card with ＋ (add it again), or a section heading. Pending entries have no ＋. */
