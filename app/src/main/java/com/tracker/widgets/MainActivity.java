@@ -53,6 +53,9 @@ public class MainActivity extends Activity {
         findViewById(R.id.perm_calendar_b).setOnClickListener(v -> requestPermissions(new String[]{android.Manifest.permission.READ_CALENDAR}, 12));
         findViewById(R.id.perm_screen_b).setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)));
         findViewById(R.id.perm_steps_b).setOnClickListener(v -> connectSteps());
+        findViewById(R.id.steps_hc).setOnClickListener(v -> openHcHome());
+        findViewById(R.id.sync_now).setOnClickListener(v -> startActivity(new Intent(this, SyncActivity.class)));
+        findViewById(R.id.sync_signin).setOnClickListener(v -> startActivity(new Intent(this, TrackerWebActivity.class)));
         EditText goal = findViewById(R.id.step_goal);
         goal.setText(String.valueOf(Extras.goal(this)));
         goal.addTextChangedListener(new android.text.TextWatcher() {
@@ -184,6 +187,8 @@ public class MainActivity extends Activity {
         String err = WidgetData.prefs(this).getString("steps_err", "");
         if (err.equals("BG")) err = "";
         if (hc && !err.isEmpty()) hs += '\n' + err;
+        String dg = WidgetData.prefs(this).getString("steps_diag", "");
+        if (hc && !dg.isEmpty()) hs += '\n' + dg;
         // The last thing Connect did, kept for 15 minutes so coming back to the app doesn't wipe it.
         String msg = WidgetData.prefs(this).getString("steps_msg", "");
         if (!hc && !msg.isEmpty() && System.currentTimeMillis() - WidgetData.prefs(this).getLong("steps_msg_at", 0) < 15 * 60_000L) hs = msg;
@@ -192,6 +197,28 @@ public class MainActivity extends Activity {
         boolean avail = false;
         try { avail = StepsHC.available(this); } catch (Throwable ignored) {}
         ((TextView) findViewById(R.id.perm_steps_b)).setText(all ? "✓" : hc ? "More" : avail ? "Connect" : "Get it");
+    }
+
+    /** Health Connect's own screen, where Samsung Health's access (App permissions → Samsung Health) can be checked. */
+    private void openHcHome() {
+        java.util.List<Intent> tries = new java.util.ArrayList<>();
+        if (android.os.Build.VERSION.SDK_INT >= 34) tries.add(new Intent("android.health.connect.action.HEALTH_HOME_SETTINGS"));
+        tries.add(new Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS"));
+        Intent app = getPackageManager().getLaunchIntentForPackage(HC_PKG);
+        if (app != null) tries.add(app);
+        for (Intent i : tries) {
+            try { startActivity(i); Toast.makeText(this, "App permissions → Samsung Health: allow Steps and Active calories", Toast.LENGTH_LONG).show(); return; }
+            catch (Throwable ignored) {}
+        }
+        Toast.makeText(this, "Open Settings and search for Health Connect.", Toast.LENGTH_LONG).show();
+    }
+
+    private void showSync() {
+        boolean in = TrackerWeb.signedIn();
+        ((TextView) findViewById(R.id.sync_t)).setText(in
+                ? "✓ Signed in to Claude here. ⟳ Sync on any widget (or Sync now) opens the Tracker out of sight for a few seconds so it adds what the widgets sent."
+                : "Widgets send to the sheet; only the Tracker can add it to your data, so Sync needs to open the Tracker here. Sign in to Claude once to let it.");
+        ((TextView) findViewById(R.id.sync_signin)).setText(in ? "Open the Tracker here" : "Sign in to Claude");
     }
 
     /** What the app sees of Health Connect, in words, for the line under Steps. */
@@ -209,6 +236,7 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         afterExtras(false);
+        showSync();
         // Show the saved state without treating it as a tap.
         texts.setOnCheckedChangeListener(null);
         texts.setChecked(WidgetData.prefs(this).getBoolean(TextListener.PREF_ON, false));

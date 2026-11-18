@@ -73,7 +73,7 @@ public class ActionReceiver extends BroadcastReceiver {
                     msg = "Study timer started";
                     break;
                 case "prog":
-                    e.put("id", i.getStringExtra("id")).put("v", i.getStringExtra("v"));
+                    e.put("aid", i.getStringExtra("id")).put("v", i.getStringExtra("v"));
                     msg = null;
                     break;
                 case "sug": {

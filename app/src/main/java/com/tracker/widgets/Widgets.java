@@ -205,6 +205,8 @@ final class Widgets {
         Intent svc = new Intent(c, ListService.class).putExtra("kind", "acct").putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
         svc.setData(Uri.parse("tracker://list/acct/" + wid));
         v.setRemoteAdapter(R.id.acct_stack, svc);
+        int front = WidgetData.prefs(c).getInt("money_front_" + wid, -1);
+        if (front >= 0) v.setDisplayedChild(R.id.acct_stack, front);   // stay on the card you tapped
         v.setEmptyView(R.id.acct_stack, R.id.acct_empty);
         // Tapping a card does nothing (swipe for the next one): the template only exists so the cards' taps go nowhere outside.
         Intent none = new Intent(c, ActionReceiver.class).setAction(ActionReceiver.ACT_LIST);

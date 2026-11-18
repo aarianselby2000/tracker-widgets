@@ -197,7 +197,7 @@ final class Phone {
     /** School item id → status set on the phone and not applied yet. */
     static Map<String, String> pendingProg(Context c) {
         Map<String, String> m = new HashMap<>();
-        for (JSONObject e : pendingOf(c, "prog")) m.put(e.optString("id"), e.optString("v"));
+        for (JSONObject e : pendingOf(c, "prog")) m.put(e.optString("aid", e.optString("id")), e.optString("v"));
         return m;
     }
 

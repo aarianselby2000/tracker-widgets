@@ -125,7 +125,7 @@ public class ListService extends RemoteViewsService {
             JSONArray r = rows.get(pos);
             if (kind.equals("assign")) return assign(r);
             if (kind.equals("inbox")) return inbox(r);
-            if (kind.equals("acct")) return account(r.optJSONObject(0));
+            if (kind.equals("acct")) return account(r.optJSONObject(0), pos);
             if (kind.equals("foods")) return food(r);
             if (kind.equals("health")) return healthPage(r.optString(0));
             if (kind.equals("days")) return dayPage(r.optJSONObject(0), pos, rows.size());
@@ -264,7 +264,7 @@ public class ListService extends RemoteViewsService {
         }
 
         /** One account card (Checking, Savings or Cash), like its panel in the Tracker's Money section. */
-        RemoteViews account(JSONObject a) {
+        RemoteViews account(JSONObject a, int pos) {
             RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.item_account);
             String k = a.optString("k");
             int color = k.equals("savings") ? 0xFF6B9CEC : k.equals("cash") ? 0xFFE8BD34 : 0xFF55B981;
@@ -275,7 +275,9 @@ public class ListService extends RemoteViewsService {
             Widgets.ts(v, R.id.acct_recent, 11.5f, this.k);
             Widgets.ts(v, R.id.acct_pill, 11, this.k);
             v.setTextColor(R.id.acct_name, color);
-            v.setOnClickFillInIntent(R.id.acct_card, new Intent());
+            // Tap the front card to show its recent entries (tap again to hide them); the cards behind never show theirs.
+            boolean open = WidgetData.prefs(c).getInt("money_front_" + wid, -1) == pos;
+            v.setOnClickFillInIntent(R.id.acct_card, new Intent().putExtra("op", "acct").putExtra("wid", String.valueOf(wid)).putExtra("to", String.valueOf(open ? -1 : pos)));
             // Entries added on the phone that the Tracker hasn't applied yet move the balance here too.
             android.text.SpannableStringBuilder rec = new android.text.SpannableStringBuilder();
             double pend = 0;
@@ -316,7 +318,7 @@ public class ListService extends RemoteViewsService {
                 JSONArray x = r.optJSONArray(i);
                 if (x != null) recLine(rec, x.optString(1), x.optDouble(2, 0), x.optString(3) + " · " + x.optString(0));
             }
-            v.setTextViewText(R.id.acct_recent, rec.length() == 0 ? "No entries yet" : rec);
+            v.setTextViewText(R.id.acct_recent, !open ? "Tap for recent entries" : rec.length() == 0 ? "No entries yet" : rec);
             String asOf = a.optString("asOf");
             v.setTextViewText(R.id.acct_asof, asOf.length() == 10 ? (k.equals("cash") ? "Counted " : "From your bank ") + Integer.parseInt(asOf.substring(5, 7)) + "/" + Integer.parseInt(asOf.substring(8)) + ", plus entries since" : "");
             return v;

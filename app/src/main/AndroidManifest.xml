@@ -67,9 +67,14 @@
             android:name=".SyncActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:noHistory="true"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- Sign in to Claude inside the app, once, so Sync can open the Tracker here. -->
+        <activity
+            android:name=".TrackerWebActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
 
         <!-- Health Connect asks this screen why the app wants steps. -->
         <activity

@@ -90,6 +90,9 @@ object StepsHC {
                     if (got.contains(TOTAL)) metrics.add(TotalCaloriesBurnedRecord.ENERGY_TOTAL)
                     val out = JSONArray()
                     val sources = linkedSetOf<String>()
+                    val weekStart = today.minusDays(6).atStartOfDay(z).toInstant()
+                    for (o in client.aggregate(AggregateRequest(setOf(StepsRecord.COUNT_TOTAL), TimeRangeFilter.between(weekStart, Instant.now()))).dataOrigins)
+                        sources.add(NAMES[o.packageName] ?: o.packageName.substringAfterLast('.'))
                     for (i in 6 downTo 0) {
                         val d = today.minusDays(i.toLong())
                         val end = if (i == 0) Instant.now() else d.plusDays(1).atStartOfDay(z).toInstant()
@@ -98,10 +101,11 @@ object StepsHC {
                         row.put(if (got.contains(ACTIVE)) Math.round(res[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL]?.inKilocalories ?: 0.0) else -1L)
                         row.put(if (got.contains(TOTAL)) Math.round(res[TotalCaloriesBurnedRecord.ENERGY_TOTAL]?.inKilocalories ?: 0.0) else -1L)
                         out.put(row)
-                        for (o in res.dataOrigins) sources.add(NAMES[o.packageName] ?: o.packageName.substringAfterLast('.'))
                     }
+                    val dayStart = today.atStartOfDay(z).toInstant()
                     p.edit().putString("steps", out.toString()).putLong("steps_at", System.currentTimeMillis())
-                        .putString("steps_src", sources.joinToString(" + ")).putLong("steps_active_min", activeMinutes(client, got, today.atStartOfDay(z).toInstant())).apply()
+                        .putString("steps_src", sources.joinToString(" + ")).putLong("steps_active_min", activeMinutes(client, got, dayStart))
+                        .putString("steps_diag", diag(client, got, dayStart)).apply()
                     null
                 }
             }
@@ -112,6 +116,21 @@ object StepsHC {
         }
         p.edit().putString("steps_err", err ?: "").apply()
         return err
+    }
+
+    private fun who(pk: Collection<String>): String =
+        if (pk.isEmpty()) "no app" else pk.toSet().joinToString(", ") { NAMES[it] ?: it }
+
+    /** What Health Connect holds for today, to show when the numbers look wrong. */
+    private suspend fun diag(client: HealthConnectClient, got: Set<String>, start: Instant): String {
+        val range = TimeRangeFilter.between(start, Instant.now())
+        val st = client.readRecords(ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = range, pageSize = 5000)).records
+        var s = "Today Health Connect has " + st.size + " step " + (if (st.size == 1) "entry" else "entries") + " (from " + who(st.map { it.metadata.dataOrigin.packageName }) + ")"
+        if (got.contains(ACTIVE)) {
+            val ac = client.readRecords(ReadRecordsRequest(recordType = ActiveCaloriesBurnedRecord::class, timeRangeFilter = range, pageSize = 2000)).records
+            s += " and " + ac.size + " active-calorie " + (if (ac.size == 1) "entry" else "entries") + " (from " + who(ac.map { it.metadata.dataOrigin.packageName }) + ")"
+        }
+        return "$s."
     }
 
     /**

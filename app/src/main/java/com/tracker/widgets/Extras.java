@@ -452,10 +452,10 @@ final class Extras {
             v.setTextViewText(R.id.sp_sub, !isToday ? String.format(Locale.US, "Goal %,d · tap ⟳ Sync for today", goal)
                     : hit ? String.format(Locale.US, "Goal of %,d reached 🎉", goal) : String.format(Locale.US, "%,d to go to %,d", goal - n, goal));
             // calories (active, as Samsung Health shows them; total if that's all there is) and active time
-            long ak = isToday ? t.optLong(2, -1) : -1, tk = isToday ? t.optLong(3, -1) : -1;
-            boolean useTotal = ak <= 0 && tk > 0;
-            v.setTextViewText(R.id.sp_kcal, useTotal ? String.format(Locale.US, "%,d", tk) : ak >= 0 ? String.format(Locale.US, "%,d", ak) : "–");
-            v.setTextViewText(R.id.sp_kcal_l, useTotal ? "KCAL BURNED" : "ACTIVE KCAL");
+            // Active calories, as Samsung Health counts them (Health Connect's total adds resting calories, so it isn't shown).
+            long ak = isToday ? t.optLong(2, -1) : -1;
+            v.setTextViewText(R.id.sp_kcal, ak >= 0 ? String.format(Locale.US, "%,d", ak) : "–");
+            v.setTextViewText(R.id.sp_kcal_l, "ACTIVE KCAL");
             long am = isToday ? p.getLong("steps_active_min", -1) : -1;
             v.setTextViewText(R.id.sp_active, am < 0 ? "–" : "≈ " + dur(am * 60000));
             Widgets.ts(v, R.id.sp_kcal, 19, k);
@@ -465,9 +465,10 @@ final class Extras {
             for (int i = 0; i < days.length(); i++) if (days.getJSONArray(i).optLong(1) > 0) none = false;
             String src = p.getString("steps_src", "");
             String nt = err;
-            if (nt.isEmpty() && none && src.isEmpty())
-                nt = "Health Connect has no steps yet. In Samsung Health: ⋮ → Settings → Health Connect, and let it share Steps (it sends them every so often). Then tap ⟳ Sync.";
-            else if (nt.isEmpty() && t.optLong(2, -1) < 0 && t.optLong(3, -1) < 0)
+            if (nt.isEmpty() && none)
+                nt = "Health Connect has no steps from Samsung Health yet. In Tracker Widgets, tap Check Samsung Health's access, allow Samsung Health to share "
+                        + "Steps and Active calories, then open Samsung Health once so it sends them, and tap ⟳ Sync.";
+            else if (nt.isEmpty() && t.optLong(2, -1) < 0)
                 nt = "For calories and active time, open Tracker Widgets and tap More next to Steps.";
             note(v, R.id.sp_note, nt);
             v.setTextViewText(R.id.sp_days_h, "LAST 7 DAYS" + (src.isEmpty() ? "" : "  ·  FROM " + src.toUpperCase(Locale.US)));
