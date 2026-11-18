@@ -48,7 +48,12 @@ final class Widgets {
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) {
             m.updateAppWidget(id, money(c, d, w, id));
-            m.notifyAppWidgetViewDataChanged(id, R.id.acct_stack);
+            // Reload the cards only when what they show changed: a reload mid-swipe can jump or scatter the stack.
+            String sig = moneySig(c, w, id), key = "acct_sig_" + id;
+            if (!sig.equals(WidgetData.prefs(c).getString(key, ""))) {
+                WidgetData.prefs(c).edit().putString(key, sig).apply();
+                m.notifyAppWidgetViewDataChanged(id, R.id.acct_stack);
+            }
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, ScheduleWidget.class))) {
             m.updateAppWidget(id, schedule(c, d, w, id));
@@ -64,6 +69,15 @@ final class Widgets {
             m.updateAppWidget(id, inbox(c, d, id));
             m.notifyAppWidgetViewDataChanged(id, R.id.inbox_list);
         }
+    }
+
+    /** What the Money cards show: the accounts, entries still waiting, and the widget's size. */
+    private static String moneySig(Context c, JSONObject w, int id) {
+        JSONObject mo = w.optJSONObject("m");
+        StringBuilder s = new StringBuilder(mo == null ? "" : String.valueOf(mo.optJSONArray("acc")));
+        for (JSONObject e : Phone.pendingOf(c, "money")) s.append('|').append(e.optString("id"));
+        s.append('|').append(scale(c, id));
+        return Integer.toHexString(s.toString().hashCode()) + ":" + s.length();
     }
 
     // ---------- Health ----------
@@ -477,6 +491,8 @@ final class Widgets {
         else if (!wait.isEmpty()) line = wait + " · " + line;
         v.setTextViewText(R.id.updated_text, syncing(c) ? "Syncing…" : line);
         syncButton(c, v);
+        // A tap anywhere that isn't a button does nothing (otherwise the launcher may open an app).
+        Pages.click(c, v, R.id.root, "op", "none");
     }
 
     /** A button that sends one entry (water, supplements). */

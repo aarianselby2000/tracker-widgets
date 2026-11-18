@@ -105,7 +105,7 @@ object StepsHC {
                     val dayStart = today.atStartOfDay(z).toInstant()
                     p.edit().putString("steps", out.toString()).putLong("steps_at", System.currentTimeMillis())
                         .putString("steps_src", sources.joinToString(" + ")).putLong("steps_active_min", activeMinutes(client, got, dayStart))
-                        .putString("steps_diag", diag(client, got, dayStart)).apply()
+                        .putString("steps_diag", diag(client, got, dayStart, p)).apply()
                     null
                 }
             }
@@ -125,13 +125,15 @@ object StepsHC {
      * What Health Connect holds for today, per app, to show when the numbers look wrong: how many steps in how many entries,
      * from when to when (Samsung Health may only share what it counted after it was connected), and how long entries are.
      */
-    private suspend fun diag(client: HealthConnectClient, got: Set<String>, start: Instant): String {
+    private suspend fun diag(client: HealthConnectClient, got: Set<String>, start: Instant, p: android.content.SharedPreferences): String {
         val range = TimeRangeFilter.between(start, Instant.now())
         val z = ZoneId.systemDefault()
         val fmt = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US)
         fun t(i: Instant): String = i.atZone(z).format(fmt)
         val parts = mutableListOf<String>()
         val st = client.readRecords(ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = range, pageSize = 5000)).records
+        // When today's first step entry starts, for the widget's "only has steps since" note.
+        p.edit().putLong("steps_first", if (st.isEmpty()) 0L else st.minOf { it.startTime }.toEpochMilli()).apply()
         if (st.isEmpty()) parts.add("no step entries")
         for ((pk, rs) in st.groupBy { it.metadata.dataOrigin.packageName }) {
             val mins = rs.map { (it.endTime.toEpochMilli() - it.startTime.toEpochMilli()) / 60000 }.sorted()

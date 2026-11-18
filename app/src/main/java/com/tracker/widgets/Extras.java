@@ -54,6 +54,7 @@ final class Extras {
     private static void header(Context c, RemoteViews v, Class<?> provider, String sub) {
         v.setTextViewText(R.id.updated_text, Widgets.syncing(c) ? "Syncing…" : sub);
         Widgets.syncButton(c, v);
+        Pages.click(c, v, R.id.root, "op", "none");   // taps that aren't on a button do nothing
     }
 
     private static void note(RemoteViews v, int id, String text) {
@@ -470,6 +471,13 @@ final class Extras {
                         + "Steps and Active calories, then open Samsung Health once so it sends them, and tap ⟳ Sync.";
             else if (nt.isEmpty() && t.optLong(2, -1) < 0)
                 nt = "For calories and active time, open Tracker Widgets and tap More next to Steps.";
+            // Health Connect's steps for today start late (Samsung Health shares what it counts after it's connected): say so.
+            long first = p.getLong("steps_first", 0);
+            ZoneId zz = ZoneId.systemDefault();
+            if (nt.isEmpty() && isToday && first > LocalDate.now().atStartOfDay(zz).plusHours(5).toInstant().toEpochMilli())
+                nt = "Health Connect only has today's steps from " + Instant.ofEpochMilli(first).atZone(zz).format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
+                        + " on, so this is short of Samsung Health's count. Samsung Health shares what it counts after it was connected, so tomorrow should match. "
+                        + "Opening Samsung Health sends its newest steps.";
             note(v, R.id.sp_note, nt);
             v.setTextViewText(R.id.sp_days_h, "LAST 7 DAYS" + (src.isEmpty() ? "" : "  ·  FROM " + src.toUpperCase(Locale.US)));
             v.removeAllViews(R.id.sp_days);

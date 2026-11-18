@@ -40,6 +40,7 @@ public class SyncActivity extends Activity {
         w.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL);
         w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
         setContentView(R.layout.activity_sync);
+        Bars.pad(findViewById(R.id.sync_root), false, true);   // above the gesture bar
         status = findViewById(R.id.sync_status);
         action = findViewById(R.id.sync_action);
         findViewById(R.id.sync_close).setOnClickListener(v -> done(null, 0));

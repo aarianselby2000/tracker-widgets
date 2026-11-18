@@ -28,6 +28,7 @@ public class MainActivity extends Activity {
     protected void onCreate(Bundle b) {
         super.onCreate(b);
         setContentView(R.layout.activity_main);
+        Bars.pad(((android.view.ViewGroup) findViewById(android.R.id.content)).getChildAt(0), true, true);
         url = findViewById(R.id.url);
         status = findViewById(R.id.status);
         texts = findViewById(R.id.texts);

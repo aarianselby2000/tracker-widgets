@@ -105,10 +105,6 @@ public class ListService extends RemoteViewsService {
                 JSONObject m = w.optJSONObject("m");
                 JSONArray a = m != null ? m.optJSONArray("acc") : null;
                 for (int i = 0; a != null && i < a.length(); i++) if (a.optJSONObject(i) != null) rows.add(new JSONArray().put(a.optJSONObject(i)));
-                // A StackView only loops when it holds more than 5 cards; with 3 it runs out and swipes into an empty stack.
-                // Repeating Checking, Savings, Cash keeps it going round.
-                int n = rows.size();
-                for (int rep = 0; n > 0 && rows.size() < 9; rep++) for (int i = 0; i < n; i++) rows.add(rows.get(i));
             } else if (kind.equals("inbox")) {
                 JSONArray a = w.optJSONArray("i");
                 Set<String> done = Phone.pendingSugs(c);

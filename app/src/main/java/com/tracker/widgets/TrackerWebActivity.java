@@ -60,6 +60,7 @@ public class TrackerWebActivity extends Activity {
         });
         root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
         setContentView(root);
+        Bars.pad(root, true, true);
         showInfo(null);
         web.loadUrl(WidgetData.TRACKER_URL);
     }
