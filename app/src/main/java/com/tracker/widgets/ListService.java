@@ -125,7 +125,6 @@ public class ListService extends RemoteViewsService {
             JSONArray r = rows.get(pos);
             if (kind.equals("assign")) return assign(r);
             if (kind.equals("inbox")) return inbox(r);
-            if (kind.startsWith("pages:")) return Pages.page(c, kind.substring(6), r.optJSONObject(0), pos, rows.size(), wid, k);
             if (kind.equals("acct")) return account(r.optJSONObject(0));
             if (kind.equals("foods")) return food(r);
             if (kind.equals("health")) return healthPage(r.optString(0));

@@ -12,14 +12,20 @@ public class ActionReceiver extends BroadcastReceiver {
     static final String ACT = "com.tracker.widgets.ACT";
     static final String ACT_LIST = "com.tracker.widgets.ACT_LIST";
 
+    private static int num(String s) {
+        try { return Integer.parseInt(s); } catch (Exception e) { return -1; }
+    }
+
     @Override
     public void onReceive(Context c, Intent i) {
         String op = i.getStringExtra("op");
         if (op == null || op.equals("none")) return;
-        if (op.equals("day")) {   // the Schedule's ‹ › (just which day is shown; nothing to send)
-            int wid = i.getIntExtra("wid", -1);
-            if (wid != -1) WidgetData.prefs(c).edit().putInt("sched_day_" + wid, i.getIntExtra("to", 0))
+        if (op.equals("day") || op.equals("page")) {   // which day or tab a widget shows: nothing to send
+            int wid = num(i.getStringExtra("wid")), to = num(i.getStringExtra("to"));
+            if (wid == -1) return;
+            if (op.equals("day")) WidgetData.prefs(c).edit().putInt("sched_day_" + wid, to)
                     .putString("sched_day_on_" + wid, java.time.LocalDate.now().toString()).apply();
+            else WidgetData.prefs(c).edit().putInt("page_" + i.getStringExtra("section") + "_" + wid, to).apply();
             Widgets.updateAll(c);
             return;
         }

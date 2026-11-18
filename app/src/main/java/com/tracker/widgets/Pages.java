@@ -46,15 +46,58 @@ final class Pages {
         return Math.max(110, sz[1] - reserved * k - 60 * k);
     }
 
-    static RemoteViews page(Context c, String section, JSONObject p, int pos, int count, int wid, float k) {
-        if ("today".equals(p.optString("t")) && section.equals("schedule")) return gridPage(c, wid, pos, count, k);
-        RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.item_page);
-        int acc = accent(section);
-        v.setTextViewText(R.id.page_title, p.optString("n"));
+    /** The tab a widget shows (saved per widget), 0 at first. */
+    static int current(Context c, String section, int wid, int count) {
+        int i = WidgetData.prefs(c).getInt("page_" + section + "_" + wid, 0);
+        return count <= 0 ? 0 : ((i % count) + count) % count;
+    }
+
+    /** A tap that sends ActionReceiver these extras (each distinct tap gets its own PendingIntent). */
+    static void click(Context c, RemoteViews v, int viewId, String... kv) {
+        Intent i = new Intent(c, ActionReceiver.class);
+        StringBuilder key = new StringBuilder(ActionReceiver.ACT);
+        for (int n = 0; n + 1 < kv.length; n += 2) { i.putExtra(kv[n], kv[n + 1]); key.append('|').append(kv[n]).append('=').append(kv[n + 1]); }
+        i.setAction(key.toString());
+        v.setOnClickPendingIntent(viewId, android.app.PendingIntent.getBroadcast(c, key.toString().hashCode(), i,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT | android.app.PendingIntent.FLAG_IMMUTABLE));
+    }
+
+    /** ‹ title ›, the dots, and tapping the page itself for the next tab. */
+    private static void nav(Context c, RemoteViews v, String section, JSONArray pages, int pos, int wid, float k) {
+        int count = pages.length(), acc = accent(section);
+        String w = String.valueOf(wid), prev = String.valueOf((pos - 1 + count) % count), next = String.valueOf((pos + 1) % count);
+        JSONObject p = pages.optJSONObject(pos), np = pages.optJSONObject((pos + 1) % count);
+        v.setTextViewText(R.id.page_title, p != null ? p.optString("n") : "");
         v.setTextColor(R.id.page_title, acc);
         v.setTextViewTextSize(R.id.page_title, TypedValue.COMPLEX_UNIT_SP, 15 * k);
-        v.setTextViewText(R.id.page_hint, (pos + 1) + " / " + count + "  ·  swipe ↕");
-        dots(c, v, pos, count, acc);
+        v.setTextViewText(R.id.page_hint, (pos + 1) + " of " + count + (np != null && count > 1 ? "  ·  next: " + cap(np.optString("n")) : ""));
+        click(c, v, R.id.page_prev, "op", "page", "section", section, "wid", w, "to", prev);
+        click(c, v, R.id.page_next, "op", "page", "section", section, "wid", w, "to", next);
+        click(c, v, R.id.page_head, "op", "page", "section", section, "wid", w, "to", next);
+        click(c, v, R.id.page, "op", "page", "section", section, "wid", w, "to", next);
+        v.removeAllViews(R.id.page_dots);
+        for (int i = 0; i < count; i++) {
+            RemoteViews d = new RemoteViews(c.getPackageName(), R.layout.item_dot);
+            d.setInt(R.id.dot, "setColorFilter", i == pos ? acc : 0xFF2A313B);
+            click(c, d, R.id.dotf, "op", "page", "section", section, "wid", w, "to", String.valueOf(i));
+            v.addView(R.id.page_dots, d);
+        }
+    }
+
+    private static String cap(String s) {
+        String t = s.split(" · ")[0].toLowerCase(Locale.US);
+        StringBuilder b = new StringBuilder();
+        for (String x : t.split(" ")) if (!x.isEmpty()) b.append(b.length() > 0 ? " " : "").append(x.equals("&") ? "&" : Character.toUpperCase(x.charAt(0)) + x.substring(1));
+        return b.toString();
+    }
+
+    /** The widget's current tab of this section, filling the widget. */
+    static RemoteViews page(Context c, String section, JSONArray pages, int pos, int wid, float k) {
+        JSONObject p = pages.optJSONObject(pos);
+        if (p == null) p = new JSONObject();
+        if ("today".equals(p.optString("t")) && section.equals("schedule")) return gridPage(c, section, pages, wid, pos, k);
+        RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.item_page);
+        nav(c, v, section, pages, pos, wid, k);
         JSONArray rows = withPending(c, section, p.optString("t"), p.optJSONArray("r"));
         float left = budget(c, wid, section, k);
         int shown = 0, n = rows == null ? 0 : rows.length();
@@ -74,17 +117,7 @@ final class Pages {
             shown++;
         }
         if (n == 0) v.addView(R.id.rows, note(c, "Nothing here yet.", k));
-        v.setOnClickFillInIntent(R.id.page, new Intent().putExtra("op", "none"));
         return v;
-    }
-
-    private static void dots(Context c, RemoteViews v, int pos, int count, int acc) {
-        v.removeAllViews(R.id.page_dots);
-        for (int i = 0; i < count; i++) {
-            RemoteViews d = new RemoteViews(c.getPackageName(), R.layout.item_dot);
-            d.setInt(R.id.dot, "setColorFilter", i == pos ? acc : 0xFF2A313B);
-            v.addView(R.id.page_dots, d);
-        }
     }
 
     private static float height(JSONArray r) {
@@ -231,7 +264,7 @@ final class Pages {
             int h = (Integer) opts[i][2];
             boolean on = val.equals(status);
             Widgets.pill(v, p[0], p[1], p[2], (String) opts[i][1], on ? Widgets.chipBg(h) : Widgets.SUNK, on ? Widgets.chipFg(h) : Widgets.MUTED);
-            v.setOnClickFillInIntent(p[0], new Intent().putExtra("op", "prog").putExtra("id", id).putExtra("v", val));
+            click(c, v, p[0], "op", "prog", "id", id, "v", val);
             v.setTextViewTextSize(p[2], TypedValue.COMPLEX_UNIT_SP, 11 * k);
         }
         v.setTextViewTextSize(R.id.name_text, TypedValue.COMPLEX_UNIT_SP, 13 * k);
@@ -274,8 +307,9 @@ final class Pages {
 
     // ---------- the Schedule's Today page: ‹ day ›, now/next, the grid ----------
 
-    static RemoteViews gridPage(Context c, int wid, int pos, int count, float k) {
+    static RemoteViews gridPage(Context c, String section, JSONArray pages, int wid, int pos, float k) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.item_grid_page);
+        nav(c, v, section, pages, pos, wid, k);
         JSONObject w = WidgetData.w(c), s = w.optJSONObject("s");
         JSONArray days = s != null ? s.optJSONArray("days") : null;
         int n = 1 + (days == null ? 0 : days.length()), off = Math.min(n - 1, Widgets.dayOffset(c, wid));
@@ -285,10 +319,11 @@ final class Pages {
         String dn = off == 0 ? "TODAY" : off == 1 ? "TOMORROW" : date.format(DateTimeFormatter.ofPattern("EEEE", Locale.US)).toUpperCase(Locale.US);
         v.setTextViewText(R.id.day_title, dn + " · " + date.format(DateTimeFormatter.ofPattern("EEE M/d", Locale.US)).toUpperCase(Locale.US));
         v.setTextViewTextSize(R.id.day_title, TypedValue.COMPLEX_UNIT_SP, 14 * k);
-        v.setTextViewText(R.id.page_hint, (pos + 1) + " / " + count + "  ·  swipe ↕ for this week, insights, sleep, study");
-        v.setOnClickFillInIntent(R.id.day_prev, new Intent().putExtra("op", "day").putExtra("to", (off - 1 + n) % n).putExtra("wid", wid));
-        v.setOnClickFillInIntent(R.id.day_next, new Intent().putExtra("op", "day").putExtra("to", (off + 1) % n).putExtra("wid", wid));
-        v.setOnClickFillInIntent(R.id.day_title, new Intent().putExtra("op", "day").putExtra("to", 0).putExtra("wid", wid));
+        // On this page the grid is what you tap through days with, so a tap on the page doesn't change tabs.
+        click(c, v, R.id.page, "op", "none");
+        click(c, v, R.id.day_prev, "op", "day", "wid", String.valueOf(wid), "to", String.valueOf((off - 1 + n) % n));
+        click(c, v, R.id.day_next, "op", "day", "wid", String.valueOf(wid), "to", String.valueOf((off + 1) % n));
+        click(c, v, R.id.day_title, "op", "day", "wid", String.valueOf(wid), "to", "0");
         int nowMin = LocalTime.now().getHour() * 60 + LocalTime.now().getMinute();
         v.setViewVisibility(R.id.cards, off == 0 ? View.VISIBLE : View.GONE);
         if (off == 0 && s != null) {
@@ -298,7 +333,7 @@ final class Pages {
             Widgets.nowNext(v, s.optJSONArray("mi"), nowMin, R.id.now_mi, R.id.next_mi, "Aarian", null);
         }
         int[] sz = Widgets.sizeDp(c, wid);
-        float h = Math.max(120, sz[1] - 60 * k - 70 * k - (off == 0 ? 70 * k : 0) - 20);
+        float h = Math.max(120, sz[1] - 60 * k - 92 * k - (off == 0 ? 70 * k : 0) - 20);
         if (day != null) Grid.build(c, v, day.optJSONArray("me"), day.optJSONArray("mi"), off == 0 ? nowMin : -1, Math.max(150, sz[0] - 46), h, k);
         return v;
     }

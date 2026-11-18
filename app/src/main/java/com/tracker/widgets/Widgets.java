@@ -45,19 +45,15 @@ final class Widgets {
         JSONObject w = WidgetData.w(c);
         for (int id : m.getAppWidgetIds(new ComponentName(c, FoodWidget.class))) {
             m.updateAppWidget(id, food(c, d, w, id));
-            m.notifyAppWidgetViewDataChanged(id, R.id.health_stack);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) {
             m.updateAppWidget(id, money(c, d, w, id));
-            m.notifyAppWidgetViewDataChanged(id, R.id.acct_stack);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, ScheduleWidget.class))) {
             m.updateAppWidget(id, schedule(c, d, w, id));
-            m.notifyAppWidgetViewDataChanged(id, R.id.sched_stack);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, DeadlinesWidget.class))) {
             m.updateAppWidget(id, school(c, d, id));
-            m.notifyAppWidgetViewDataChanged(id, R.id.school_stack);
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, InboxWidget.class))) {
             m.updateAppWidget(id, inbox(c, d, id));
@@ -73,7 +69,7 @@ final class Widgets {
         float k = scale(c, wid);
         title(v, k);
         // Health's tabs, one page each: swipe up and down (Today, Summary, Workout, Food, Water, Body, Progress, Sick).
-        pagesStack(c, v, wid, R.id.health_stack, R.id.health_empty, "health");
+        pageHost(c, v, wid, "health");
         JSONObject h = w.optJSONObject("h");
         boolean supps = "yes".equals(h != null ? h.optString("supps") : d.get("supplements"));
         Boolean ps = Phone.pendingSupps(c);
@@ -159,7 +155,7 @@ final class Widgets {
         float k = scale(c, wid);
         title(v, k);
         // Money's tabs, one page each: Overview (checking, savings, cash), Entries, Breakdown.
-        pagesStack(c, v, wid, R.id.acct_stack, R.id.acct_empty, "money");
+        pageHost(c, v, wid, "money");
         v.setOnClickPendingIntent(R.id.btn_out, entry(c, "money", "out", false));
         v.setOnClickPendingIntent(R.id.btn_in, entry(c, "money", "in", false));
         v.setOnClickPendingIntent(R.id.btn_move, entry(c, "money", "move", false));
@@ -177,7 +173,7 @@ final class Widgets {
         JSONObject s = w.optJSONObject("s");
         v.setTextViewText(R.id.title_text, s != null && !LocalDate.now().toString().equals(s.optString("date")) ? "SCHEDULE · OPEN THE TRACKER" : "SCHEDULE");
         // The Schedule's tabs, one page each: Today (the grid, with ‹ › for other days), Week, Insights, Sleep, Study.
-        pagesStack(c, v, wid, R.id.sched_stack, R.id.sched_empty, "schedule");
+        pageHost(c, v, wid, "schedule");
         return v;
     }
 
@@ -206,7 +202,7 @@ final class Widgets {
         common(c, v, d, "#school", DeadlinesWidget.class);
         title(v, scale(c, wid));
         // School's tabs, one page each: Overview, Homework, Exams, Classes, Grades, Done.
-        pagesStack(c, v, wid, R.id.school_stack, R.id.school_empty, "school");
+        pageHost(c, v, wid, "school");
         return v;
     }
 
@@ -259,6 +255,19 @@ final class Widgets {
         Intent i = new Intent(c, provider).setAction(BaseWidget.ACTION_FLIP + "." + what + "." + wid + "." + to)
                 .putExtra("what", what).putExtra("to", to).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
         return PendingIntent.getBroadcast(c, (what + wid + "." + to).hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+    }
+
+    /** The section's current tab, drawn to fill the widget; ‹ › and tapping the page move between tabs. */
+    private static void pageHost(Context c, RemoteViews v, int wid, String section) {
+        JSONObject pg = WidgetData.w(c).optJSONObject("pages");
+        JSONArray pages = pg != null ? pg.optJSONArray(section) : null;
+        v.removeAllViews(R.id.page_host);
+        boolean none = pages == null || pages.length() == 0;
+        v.setViewVisibility(R.id.page_host, none ? View.GONE : View.VISIBLE);
+        v.setViewVisibility(R.id.page_empty, none ? View.VISIBLE : View.GONE);
+        if (none) return;
+        int pos = Pages.current(c, section, wid, pages.length());
+        v.addView(R.id.page_host, Pages.page(c, section, pages, pos, wid, scale(c, wid)));
     }
 
     /** A section's tabs as a stack of pages (ListService kind "pages:<section>"); buttons on them go to ActionReceiver. */

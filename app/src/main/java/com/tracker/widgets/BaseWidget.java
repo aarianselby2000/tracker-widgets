@@ -40,14 +40,6 @@ public abstract class BaseWidget extends AppWidgetProvider {
             Widgets.updateAll(c);
             return;
         }
-        if (i.getAction() != null && i.getAction().startsWith(ACTION_SHOW)) {   // a Money tab: show that account's card
-            int id = i.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1), idx = i.getIntExtra("idx", 0);
-            if (id == -1) return;
-            WidgetData.prefs(c).edit().putInt("money_acct_" + id, idx).apply();
-            android.widget.RemoteViews rv = new android.widget.RemoteViews(c.getPackageName(), R.layout.widget_money);
-            rv.setDisplayedChild(R.id.acct_stack, idx);
-            AppWidgetManager.getInstance(c).partiallyUpdateAppWidget(id, rv);
-        }
     }
 
     static final String ACTION_SHOW = "com.tracker.widgets.SHOW";
