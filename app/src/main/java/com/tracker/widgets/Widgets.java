@@ -206,8 +206,9 @@ final class Widgets {
         svc.setData(Uri.parse("tracker://list/acct/" + wid));
         v.setRemoteAdapter(R.id.acct_stack, svc);
         v.setEmptyView(R.id.acct_stack, R.id.acct_empty);
-        Intent open = new Intent(c, OpenActivity.class).putExtra("section", "#money");
-        v.setPendingIntentTemplate(R.id.acct_stack, PendingIntent.getActivity(c, 7100, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
+        // Tapping a card does nothing (swipe for the next one): the template only exists so the cards' taps go nowhere outside.
+        Intent none = new Intent(c, ActionReceiver.class).setAction(ActionReceiver.ACT_LIST);
+        v.setPendingIntentTemplate(R.id.acct_stack, PendingIntent.getBroadcast(c, 7100, none, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
         Double spent = m != null ? opt(m, "spent") : num(d.get("month_spent"));
         for (JSONObject e : Phone.pendingOf(c, "money"))
             if ("out".equals(e.optString("dir")) && SPEND.contains(e.optString("type"))) spent = (spent == null ? 0 : spent) + e.optDouble("amount", 0);
@@ -445,16 +446,6 @@ final class Widgets {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
     }
 
-    /** A stack of pages filled by ListService; tapping a page opens that section of the Tracker. */
-    private static void stack(Context c, RemoteViews v, int wid, int stackId, int emptyId, String kind, String section) {
-        Intent svc = new Intent(c, ListService.class).putExtra("kind", kind).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
-        svc.setData(Uri.parse("tracker://list/" + kind + "/" + wid));
-        v.setRemoteAdapter(stackId, svc);
-        v.setEmptyView(stackId, emptyId);
-        Intent open = new Intent(c, OpenActivity.class).putExtra("section", section);
-        v.setPendingIntentTemplate(stackId, PendingIntent.getActivity(c, 7400 + kind.hashCode() % 100, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
-    }
-
     /** A scrolling list filled by ListService; its buttons all go to ActionReceiver. */
     private static void list(Context c, RemoteViews v, int wid, int listId, int emptyId, String kind) {
         Intent svc = new Intent(c, ListService.class).putExtra("kind", kind).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
@@ -466,19 +457,26 @@ final class Widgets {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE));
     }
 
-    /** The "as of" line (plus what's waiting), the refresh button, and tapping the widget to open the Tracker. */
+    /** Sync is running (the Sync button was tapped in the last 30 seconds and hasn't finished). */
+    static boolean syncing(Context c) {
+        long t = WidgetData.prefs(c).getLong("syncing_at", 0);
+        return t > 0 && System.currentTimeMillis() - t < 30_000;
+    }
+
+    /** ⟳ Sync: sends what's waiting, fetches the Tracker's latest and rereads the phone's data, right away (SyncActivity). */
+    static void syncButton(Context c, RemoteViews v) {
+        Intent i = new Intent(c, SyncActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        v.setOnClickPendingIntent(R.id.refresh, PendingIntent.getActivity(c, 7777, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+    }
+
+    /** The "as of" line (plus what's waiting) and the Sync button. Tapping the widget itself opens nothing. */
     private static void common(Context c, RemoteViews v, Map<String, String> d, String section, Class<?> provider) {
         String wait = Phone.waitingNote(c), err = WidgetData.prefs(c).getString("send_error", "");
         String line = asOf(d.get("updated"), WidgetData.fetchedAt(c));
         if (!err.isEmpty() && Phone.unsent(c) > 0) line = err;
         else if (!wait.isEmpty()) line = wait + " · " + line;
-        v.setTextViewText(R.id.updated_text, line);
-        Intent open = new Intent(Intent.ACTION_VIEW, Uri.parse(WidgetData.TRACKER_URL + section));
-        v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(c, provider.hashCode(), open,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
-        Intent refresh = new Intent(c, provider).setAction(ACTION_REFRESH);
-        v.setOnClickPendingIntent(R.id.refresh, PendingIntent.getBroadcast(c, provider.hashCode() + 1, refresh,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+        v.setTextViewText(R.id.updated_text, syncing(c) ? "Syncing…" : line);
+        syncButton(c, v);
     }
 
     /** A button that sends one entry (water, supplements). */

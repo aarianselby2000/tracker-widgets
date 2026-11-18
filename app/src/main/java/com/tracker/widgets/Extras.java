@@ -50,12 +50,10 @@ final class Extras {
         return c.checkSelfPermission(perm) == PackageManager.PERMISSION_GRANTED;
     }
 
-    private static void header(Context c, RemoteViews v, Class<?> provider, String sub, Intent open) {
-        v.setTextViewText(R.id.updated_text, sub);
-        if (open != null) v.setOnClickPendingIntent(R.id.root, PendingIntent.getActivity(c, provider.hashCode(), open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
-        Intent refresh = new Intent(c, provider).setAction(Widgets.ACTION_REFRESH);
-        v.setOnClickPendingIntent(R.id.refresh, PendingIntent.getBroadcast(c, provider.hashCode() + 1, refresh, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+    /** The header's "updated" line (or Syncing…) and its Sync button. Tapping the widget itself opens nothing. */
+    private static void header(Context c, RemoteViews v, Class<?> provider, String sub) {
+        v.setTextViewText(R.id.updated_text, Widgets.syncing(c) ? "Syncing…" : sub);
+        Widgets.syncButton(c, v);
     }
 
     private static void note(RemoteViews v, int id, String text) {
@@ -134,7 +132,7 @@ final class Extras {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_weather);
         android.content.SharedPreferences p = WidgetData.prefs(c);
         float k = Widgets.scale(c, wid);
-        header(c, v, WeatherWidget.class, ago(p.getLong("wx_at", 0)), new Intent(Intent.ACTION_VIEW, Uri.parse("https://open-meteo.com/")));
+        header(c, v, WeatherWidget.class, ago(p.getLong("wx_at", 0)));
         String raw = p.getString("wx", "");
         if (raw.isEmpty()) { note(v, R.id.w_note, "Getting the weather… tap ↻ if it doesn't show up."); return v; }
         note(v, R.id.w_note, "");
@@ -234,7 +232,7 @@ final class Extras {
     static RemoteViews screen(Context c, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_screen);
         float k = Widgets.scale(c, wid);
-        header(c, v, ScreenTimeWidget.class, "today", new Intent(android.provider.Settings.ACTION_SETTINGS));
+        header(c, v, ScreenTimeWidget.class, "today");
         if (!usageAllowed(c)) {
             v.setTextViewText(R.id.sc_total, "–");
             note(v, R.id.sc_note, "Open Tracker Widgets and tap Allow screen time (usage access). It stays on your phone.");
@@ -301,67 +299,101 @@ final class Extras {
     static RemoteViews calendar(Context c, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_calendar);
         float k = Widgets.scale(c, wid);
-        Uri calApp = CalendarContract.CONTENT_URI.buildUpon().appendPath("time").appendPath(String.valueOf(System.currentTimeMillis())).build();
-        header(c, v, CalendarWidget.class, "", new Intent(Intent.ACTION_VIEW, calApp));
+        header(c, v, CalendarWidget.class, "");
         LocalDate today = LocalDate.now(), first = today.withDayOfMonth(1);
         v.setTextViewText(R.id.cal_month, today.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.US)).toUpperCase(Locale.US));
         Widgets.ts(v, R.id.cal_month, 17, k);
         boolean ok = granted(c, Manifest.permission.READ_CALENDAR);
         note(v, R.id.cal_note, ok ? "" : "Open Tracker Widgets and tap Allow calendar to see your events.");
-        ZoneId z = ZoneId.systemDefault();
-        // Events from the start of this month's grid to two weeks out.
-        LocalDate gridStart = first.minusDays(first.getDayOfWeek().getValue() % 7);
-        LocalDate until = today.plusDays(14).isAfter(first.plusMonths(1)) ? today.plusDays(15) : first.plusMonths(1).plusDays(7);
+        ZoneId z = ZoneId.systemDefault(), utc = ZoneId.of("UTC");
+        LocalDate gridStart = first.minusDays(first.getDayOfWeek().getValue() % 7), gridEnd = gridStart.plusWeeks(6);
+        // The day you tapped stays chosen until you tap it again (or ✕), or the month changes.
+        String w = String.valueOf(wid);
+        LocalDate sel = null;
+        try { String x = WidgetData.prefs(c).getString("cal_day_" + wid, ""); if (!x.isEmpty()) sel = LocalDate.parse(x); } catch (Exception ignored) {}
+        if (sel != null && (sel.isBefore(gridStart) || !sel.isBefore(gridEnd))) sel = null;
+        LocalDate until = today.plusDays(15).isAfter(gridEnd) ? today.plusDays(15) : gridEnd;
         List<long[]> times = new ArrayList<>();
-        List<String[]> info = new ArrayList<>();
+        List<String[]> info = new ArrayList<>();   // title, location, first day, day after the last
         Set<LocalDate> busy = new HashSet<>();
         if (ok) {
-            Uri.Builder b = CalendarContract.Instances.CONTENT_URI.buildUpon();
-            ContentUris.appendId(b, gridStart.atStartOfDay(z).toInstant().toEpochMilli());
-            ContentUris.appendId(b, until.atStartOfDay(z).toInstant().toEpochMilli());
+            Uri.Builder ub = CalendarContract.Instances.CONTENT_URI.buildUpon();
+            ContentUris.appendId(ub, gridStart.atStartOfDay(z).toInstant().toEpochMilli());
+            ContentUris.appendId(ub, until.atStartOfDay(z).toInstant().toEpochMilli());
             String[] proj = {CalendarContract.Instances.TITLE, CalendarContract.Instances.BEGIN, CalendarContract.Instances.END, CalendarContract.Instances.ALL_DAY,
                     CalendarContract.Instances.DISPLAY_COLOR, CalendarContract.Instances.EVENT_LOCATION};
-            try (Cursor cur = c.getContentResolver().query(b.build(), proj, CalendarContract.Instances.VISIBLE + "=1", null, CalendarContract.Instances.BEGIN + " ASC")) {
+            try (Cursor cur = c.getContentResolver().query(ub.build(), proj, CalendarContract.Instances.VISIBLE + "=1", null, CalendarContract.Instances.BEGIN + " ASC")) {
                 while (cur != null && cur.moveToNext()) {
-                    long bg = cur.getLong(1), en = cur.getLong(2);
+                    long bg = cur.getLong(1), en = Math.max(cur.getLong(2), cur.getLong(1));
                     boolean allDay = cur.getInt(3) == 1;
-                    LocalDate d0 = allDay ? Instant.ofEpochMilli(bg).atZone(ZoneId.of("UTC")).toLocalDate() : Instant.ofEpochMilli(bg).atZone(z).toLocalDate();
-                    busy.add(d0);
+                    LocalDate d0, d1;
+                    if (allDay) { d0 = Instant.ofEpochMilli(bg).atZone(utc).toLocalDate(); d1 = Instant.ofEpochMilli(en).atZone(utc).toLocalDate(); }
+                    else { d0 = Instant.ofEpochMilli(bg).atZone(z).toLocalDate(); d1 = Instant.ofEpochMilli(Math.max(bg, en - 1)).atZone(z).toLocalDate().plusDays(1); }
+                    if (!d1.isAfter(d0)) d1 = d0.plusDays(1);
+                    for (LocalDate x = d0; x.isBefore(d1) && x.isBefore(d0.plusDays(40)); x = x.plusDays(1)) busy.add(x);
                     times.add(new long[]{bg, en, allDay ? 1 : 0, cur.getInt(4)});
-                    info.add(new String[]{cur.getString(0) == null ? "(no title)" : cur.getString(0), cur.getString(5) == null ? "" : cur.getString(5), d0.toString()});
+                    info.add(new String[]{cur.getString(0) == null ? "(no title)" : cur.getString(0), cur.getString(5) == null ? "" : cur.getString(5), d0.toString(), d1.toString()});
                 }
             } catch (Exception ignored) {}
         }
-        // the month grid
+        // the month grid: tap a day to see it below
         v.removeAllViews(R.id.cal_grid);
         int[][] cell = {{R.id.c0, R.id.c0_bg, R.id.c0_t, R.id.c0_d}, {R.id.c1, R.id.c1_bg, R.id.c1_t, R.id.c1_d}, {R.id.c2, R.id.c2_bg, R.id.c2_t, R.id.c2_d},
                 {R.id.c3, R.id.c3_bg, R.id.c3_t, R.id.c3_d}, {R.id.c4, R.id.c4_bg, R.id.c4_t, R.id.c4_d}, {R.id.c5, R.id.c5_bg, R.id.c5_t, R.id.c5_d}, {R.id.c6, R.id.c6_bg, R.id.c6_t, R.id.c6_d}};
         LocalDate d = gridStart;
-        for (int w = 0; w < 6 && (w == 0 || d.getMonth() == first.getMonth()); w++) {
+        int weeks = 0;
+        for (int wk = 0; wk < 6 && (wk == 0 || d.getMonth() == first.getMonth()); wk++, weeks++) {
             RemoteViews row = new RemoteViews(c.getPackageName(), R.layout.item_cal_week);
             for (int i = 0; i < 7; i++, d = d.plusDays(1)) {
-                boolean inMonth = d.getMonth() == first.getMonth(), isToday = d.equals(today);
+                boolean inMonth = d.getMonth() == first.getMonth(), isToday = d.equals(today), isSel = d.equals(sel), filled = isToday || isSel;
                 row.setTextViewText(cell[i][2], String.valueOf(d.getDayOfMonth()));
-                row.setTextColor(cell[i][2], isToday ? 0xFF12161B : !inMonth ? 0xFF4A525E : d.isBefore(today) ? Widgets.MUTED : Widgets.INK);
-                row.setViewVisibility(cell[i][1], isToday ? View.VISIBLE : View.INVISIBLE);
-                row.setInt(cell[i][1], "setColorFilter", 0xFFF0AC55);
-                row.setTextViewText(cell[i][3], busy.contains(d) && !isToday ? "•" : "");
+                row.setTextColor(cell[i][2], filled ? 0xFF12161B : !inMonth ? 0xFF4A525E : d.isBefore(today) ? Widgets.MUTED : Widgets.INK);
+                row.setViewVisibility(cell[i][1], filled ? View.VISIBLE : View.INVISIBLE);
+                row.setInt(cell[i][1], "setColorFilter", isToday ? 0xFFF0AC55 : 0xFF6B9CEC);
+                row.setTextViewText(cell[i][3], busy.contains(d) && !filled ? "•" : "");
                 row.setTextViewTextSize(cell[i][2], TypedValue.COMPLEX_UNIT_SP, 12.5f * k);
+                Pages.click(c, row, cell[i][0], "op", "calday", "wid", w, "to", isSel ? "" : d.toString());
             }
             v.addView(R.id.cal_grid, row);
         }
-        // coming up: from now, as many as fit
         v.removeAllViews(R.id.cal_list);
         int[] sz = Widgets.sizeDp(c, wid);
-        int weeks = 6;
         int fit = (int) Math.max(1, (sz[1] - (26 + 26 + 18 + weeks * 30 + 30) * k - 26) / (46 * k));
+        int shown = 0, more = 0;
+        if (sel != null) {
+            // the chosen day: everything on it, morning to night
+            v.setTextViewText(R.id.cal_list_h, (sel.equals(today) ? "TODAY" : sel.format(DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.US)).toUpperCase(Locale.US)) + "   ✕");
+            Pages.click(c, v, R.id.cal_list_h, "op", "calday", "wid", w, "to", "");
+            for (int i = 0; i < times.size(); i++) {
+                long[] t = times.get(i);
+                String[] in = info.get(i);
+                LocalDate d0 = LocalDate.parse(in[2]), d1 = LocalDate.parse(in[3]);
+                if (sel.isBefore(d0) || !sel.isBefore(d1)) continue;
+                if (shown >= fit) { more++; continue; }
+                String when;
+                if (t[2] == 1) when = "all day";
+                else {
+                    LocalDateTime st = Instant.ofEpochMilli(t[0]).atZone(z).toLocalDateTime(), en = Instant.ofEpochMilli(t[1]).atZone(z).toLocalDateTime();
+                    when = (d0.equals(sel) ? Widgets.clock(st.getHour() * 60 + st.getMinute()) : "…") + " – "
+                            + (en.toLocalDate().equals(sel) ? Widgets.clock(en.getHour() * 60 + en.getMinute()) : "…");
+                }
+                String col = String.format("#%06X", 0xFFFFFF & (int) t[3]);
+                v.addView(R.id.cal_list, Pages.row(c, new JSONArray().put("row").put(in[0]).put(when).put(in[1]).put(col).put(""), k));
+                shown++;
+            }
+            if (ok && shown == 0) v.addView(R.id.cal_list, Pages.note(c, "Nothing on this day.", k));
+            if (more > 0) v.addView(R.id.cal_list, Pages.note(c, "+" + more + " more", k));
+            return v;
+        }
+        // coming up: from now, as many as fit
+        v.setTextViewText(R.id.cal_list_h, "COMING UP  ·  TAP A DAY");
         long now = System.currentTimeMillis();
-        int shown = 0;
         for (int i = 0; i < times.size() && shown < fit; i++) {
             long[] t = times.get(i);
             if (t[1] < now) continue;
             String[] in = info.get(i);
             LocalDate day = LocalDate.parse(in[2]);
+            if (day.isBefore(today)) day = today;
             String dayLabel = day.equals(today) ? "Today" : day.equals(today.plusDays(1)) ? "Tomorrow" : day.format(DateTimeFormatter.ofPattern("EEE M/d", Locale.US));
             LocalDateTime st = Instant.ofEpochMilli(t[0]).atZone(z).toLocalDateTime();
             String when = t[2] == 1 ? "all day" : Widgets.clock(st.getHour() * 60 + st.getMinute());
@@ -375,32 +407,70 @@ final class Extras {
 
     // ================= Steps (Health Connect; Samsung Health or Google Fit can sync into it) =================
 
-    static final int STEP_GOAL = 10000;
+    /** The daily step goal, set in the app (10,000 until you change it). */
+    static int goal(Context c) { return Math.max(500, WidgetData.prefs(c).getInt("steps_goal", 10000)); }
+
+    private static void ring(RemoteViews v, int pct, boolean hit) {
+        v.setViewVisibility(R.id.sp_ring_g, hit ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.sp_ring_b, hit ? View.GONE : View.VISIBLE);
+        v.setProgressBar(hit ? R.id.sp_ring_g : R.id.sp_ring_b, 100, Math.max(0, Math.min(100, pct)), false);
+    }
 
     static RemoteViews steps(Context c, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_steps);
         float k = Widgets.scale(c, wid);
         android.content.SharedPreferences p = WidgetData.prefs(c);
-        Intent hc = c.getPackageManager().getLaunchIntentForPackage("com.google.android.apps.healthdata");
-        header(c, v, StepsWidget.class, ago(p.getLong("steps_at", 0)), hc != null ? hc : new Intent(c, MainActivity.class));
-        String raw = p.getString("steps", "");
-        String err = p.getString("steps_err", "");
+        long at = p.getLong("steps_at", 0);
+        header(c, v, StepsWidget.class, ago(at));
+        if (Build.VERSION.SDK_INT >= 31) {
+            float r = 112 * Math.min(k, 1.3f);
+            v.setViewLayoutWidth(R.id.sp_ring, r, TypedValue.COMPLEX_UNIT_DIP);
+            v.setViewLayoutHeight(R.id.sp_ring, r, TypedValue.COMPLEX_UNIT_DIP);
+        }
+        int goal = goal(c);
+        String raw = p.getString("steps", ""), err = p.getString("steps_err", "");
+        // "BG": Health Connect wouldn't let the 30-minute refresh read (only open apps may, unless you allow background reading).
+        boolean stale = System.currentTimeMillis() - at > 2 * 3600_000L;
+        if (err.equals("BG")) err = stale ? "Tap ⟳ Sync to update your steps (Health Connect lets apps read them only while open unless you allow background reading)." : "";
+        ring(v, 0, false);
+        v.setTextViewText(R.id.sp_sub, String.format(Locale.US, "Goal %,d steps", goal));
         if (raw.isEmpty()) {
-            note(v, R.id.sp_note, err.isEmpty() ? "Open Tracker Widgets and tap Connect steps (Health Connect)." : err);
+            note(v, R.id.sp_note, err.isEmpty() ? "Open Tracker Widgets and tap Connect next to Steps (Health Connect), then ⟳ Sync." : err);
             return v;
         }
-        note(v, R.id.sp_note, err);
         try {
-            JSONArray days = new JSONArray(raw);   // [[date, steps], …] oldest first, today last
+            JSONArray days = new JSONArray(raw);   // [[date, steps, active kcal, total kcal], …] oldest first, today last (-1 = not allowed)
             JSONArray t = days.getJSONArray(days.length() - 1);
-            long n = t.optLong(1);
-            v.setTextViewText(R.id.sp_total, String.format(Locale.US, "%,d", n));
-            v.setTextViewText(R.id.sp_sub, n >= STEP_GOAL ? "Goal of 10,000 reached 🎉" : String.format(Locale.US, "%,d to go to 10,000", STEP_GOAL - n));
-            boolean hit = n >= STEP_GOAL;
-            v.setViewVisibility(R.id.sp_bar_g, hit ? View.VISIBLE : View.GONE);
-            v.setViewVisibility(R.id.sp_bar_b, hit ? View.GONE : View.VISIBLE);
-            v.setProgressBar(hit ? R.id.sp_bar_g : R.id.sp_bar_b, 100, (int) Math.min(100, n * 100 / STEP_GOAL), false);
-            Widgets.ts(v, R.id.sp_total, 44, k);
+            boolean isToday = LocalDate.now().toString().equals(t.optString(0));
+            long n = isToday ? t.optLong(1) : 0;
+            int pct = (int) Math.min(999, n * 100 / goal);
+            boolean hit = n >= goal;
+            v.setTextViewText(R.id.sp_total, isToday ? String.format(Locale.US, "%,d", n) : "–");
+            v.setTextViewText(R.id.sp_pct, isToday ? pct + "%" : "steps");
+            Widgets.ts(v, R.id.sp_total, 24, Math.min(k, 1.3f));
+            ring(v, pct, hit);
+            v.setTextViewText(R.id.sp_sub, !isToday ? String.format(Locale.US, "Goal %,d · tap ⟳ Sync for today", goal)
+                    : hit ? String.format(Locale.US, "Goal of %,d reached 🎉", goal) : String.format(Locale.US, "%,d to go to %,d", goal - n, goal));
+            // calories (active, as Samsung Health shows them; total if that's all there is) and active time
+            long ak = isToday ? t.optLong(2, -1) : -1, tk = isToday ? t.optLong(3, -1) : -1;
+            boolean useTotal = ak <= 0 && tk > 0;
+            v.setTextViewText(R.id.sp_kcal, useTotal ? String.format(Locale.US, "%,d", tk) : ak >= 0 ? String.format(Locale.US, "%,d", ak) : "–");
+            v.setTextViewText(R.id.sp_kcal_l, useTotal ? "KCAL BURNED" : "ACTIVE KCAL");
+            long am = isToday ? p.getLong("steps_active_min", -1) : -1;
+            v.setTextViewText(R.id.sp_active, am < 0 ? "–" : "≈ " + dur(am * 60000));
+            Widgets.ts(v, R.id.sp_kcal, 19, k);
+            Widgets.ts(v, R.id.sp_active, 19, k);
+            Widgets.ts(v, R.id.sp_sub, 12.5f, k);
+            boolean none = true;
+            for (int i = 0; i < days.length(); i++) if (days.getJSONArray(i).optLong(1) > 0) none = false;
+            String src = p.getString("steps_src", "");
+            String nt = err;
+            if (nt.isEmpty() && none && src.isEmpty())
+                nt = "Health Connect has no steps yet. In Samsung Health: ⋮ → Settings → Health Connect, and let it share Steps (it sends them every so often). Then tap ⟳ Sync.";
+            else if (nt.isEmpty() && t.optLong(2, -1) < 0 && t.optLong(3, -1) < 0)
+                nt = "For calories and active time, open Tracker Widgets and tap More next to Steps.";
+            note(v, R.id.sp_note, nt);
+            v.setTextViewText(R.id.sp_days_h, "LAST 7 DAYS" + (src.isEmpty() ? "" : "  ·  FROM " + src.toUpperCase(Locale.US)));
             v.removeAllViews(R.id.sp_days);
             for (int i = days.length() - 2; i >= 0; i--) {
                 JSONArray x = days.getJSONArray(i);
@@ -408,10 +478,10 @@ final class Extras {
                 LocalDate dd = LocalDate.parse(x.optString(0));
                 String lab = dd.equals(LocalDate.now().minusDays(1)) ? "Yesterday" : dd.format(DateTimeFormatter.ofPattern("EEE M/d", Locale.US));
                 v.addView(R.id.sp_days, Pages.row(c, new JSONArray().put("bar").put(lab).put(String.format(Locale.US, "%,d", s))
-                        .put((int) Math.min(100, s * 100 / STEP_GOAL)).put(s >= STEP_GOAL ? "g" : "b"), k));
+                        .put((int) Math.min(100, s * 100 / goal)).put(s >= goal ? "g" : "b"), k));
             }
         } catch (Exception e) {
-            note(v, R.id.sp_note, "Couldn't read your steps. Tap ↻.");
+            note(v, R.id.sp_note, "Couldn't read your steps. Tap ⟳ Sync.");
         }
         return v;
     }

@@ -53,6 +53,18 @@ public class MainActivity extends Activity {
         findViewById(R.id.perm_calendar_b).setOnClickListener(v -> requestPermissions(new String[]{android.Manifest.permission.READ_CALENDAR}, 12));
         findViewById(R.id.perm_screen_b).setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)));
         findViewById(R.id.perm_steps_b).setOnClickListener(v -> connectSteps());
+        EditText goal = findViewById(R.id.step_goal);
+        goal.setText(String.valueOf(Extras.goal(this)));
+        goal.addTextChangedListener(new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int n) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int n) {}
+            @Override public void afterTextChanged(android.text.Editable s) {
+                try {
+                    int g = Integer.parseInt(s.toString().trim());
+                    if (g >= 500) { WidgetData.prefs(MainActivity.this).edit().putInt("steps_goal", g).apply(); Widgets.updateAll(MainActivity.this); }
+                } catch (NumberFormatException ignored) {}
+            }
+        });
     }
 
     private static final String HC_PKG = "com.google.android.apps.healthdata";
@@ -76,7 +88,7 @@ public class MainActivity extends Activity {
             openPlayStore(HC_PKG);
             return;
         }
-        if (StepsHC.granted(this)) { askBackground(); return; }
+        if (StepsHC.grantedAll(this)) { askBackground(); return; }
         Intent ask;
         try { ask = StepsHC.permissionIntent(this); } catch (Throwable e) { openHealthConnect("Couldn't build Health Connect's request (" + e.getClass().getSimpleName() + ")"); return; }
         hcAsked = android.os.SystemClock.elapsedRealtime();
@@ -159,16 +171,18 @@ public class MainActivity extends Activity {
         boolean cal = Extras.granted(this, android.Manifest.permission.READ_CALENDAR);
         ((TextView) findViewById(R.id.perm_calendar_t)).setText(cal ? "✓ Reading your phone's calendars" : "Needs calendar access");
         ((TextView) findViewById(R.id.perm_calendar_b)).setText(cal ? "✓" : "Allow");
-        boolean hc = false;
+        boolean hc = false, all = false;
         String hs;
         try {
             int st = StepsHC.status(this);
             hc = StepsHC.granted(this);
-            hs = hc ? "✓ Connected to Health Connect" : st == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
+            all = hc && StepsHC.grantedAll(this);
+            hs = all ? "✓ Connected to Health Connect" : hc ? "✓ Steps connected. Tap More to add calories and active time" : st == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
                     ? "Tap Connect and allow Steps (Samsung Health needs to share Steps with Health Connect too)"
                     : "Needs the Health Connect app from the Play Store (Android " + android.os.Build.VERSION.RELEASE + "): tap Get it";
         } catch (Throwable t) { hs = "Health Connect isn't available here"; }
         String err = WidgetData.prefs(this).getString("steps_err", "");
+        if (err.equals("BG")) err = "";
         if (hc && !err.isEmpty()) hs += '\n' + err;
         // The last thing Connect did, kept for 15 minutes so coming back to the app doesn't wipe it.
         String msg = WidgetData.prefs(this).getString("steps_msg", "");
@@ -177,7 +191,7 @@ public class MainActivity extends Activity {
         ((TextView) findViewById(R.id.perm_steps_t)).setText(hs);
         boolean avail = false;
         try { avail = StepsHC.available(this); } catch (Throwable ignored) {}
-        ((TextView) findViewById(R.id.perm_steps_b)).setText(hc ? "✓" : avail ? "Connect" : "Get it");
+        ((TextView) findViewById(R.id.perm_steps_b)).setText(all ? "✓" : hc ? "More" : avail ? "Connect" : "Get it");
     }
 
     /** What the app sees of Health Connect, in words, for the line under Steps. */

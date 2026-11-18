@@ -26,6 +26,13 @@ public class ActionReceiver extends BroadcastReceiver {
             Widgets.updateAll(c);
             return;
         }
+        if (op.equals("calday")) {   // Calendar: show a day's events (empty = back to coming up)
+            int wid = num(i.getStringExtra("wid"));
+            String to = i.getStringExtra("to");
+            if (wid != -1) WidgetData.prefs(c).edit().putString("cal_day_" + wid, to == null ? "" : to).apply();
+            Widgets.updateAll(c);
+            return;
+        }
         if (op.equals("day") || op.equals("page")) {   // which day or tab a widget shows: nothing to send
             int wid = num(i.getStringExtra("wid")), to = num(i.getStringExtra("to"));
             if (wid == -1) return;

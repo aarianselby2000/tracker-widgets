@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.health.READ_STEPS" />
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED" />
+    <uses-permission android:name="android.permission.health.READ_EXERCISE" />
     <uses-permission android:name="android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND" />
 
     <queries>
@@ -57,6 +60,15 @@
             android:excludeFromRecents="true"
             android:noHistory="true"
             android:taskAffinity=".open"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- The widgets' Sync button: invisible, lets touches through, gone in a moment. -->
+        <activity
+            android:name=".SyncActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
 
         <!-- Health Connect asks this screen why the app wants steps. -->
