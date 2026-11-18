@@ -14,6 +14,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -82,12 +83,33 @@ public class ListService extends RemoteViewsService {
                     rows.add(r);
                 }
             } else if (kind.equals("foods")) {
-                // Typed or photographed on the phone and not estimated yet, then today's foods, newest first.
-                for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) rows.add(new JSONArray().put("⏳ Photo, read when the Tracker opens").put(-1).put("").put(-1));
-                for (JSONObject e : Phone.pendingOf(c, "food")) rows.add(new JSONArray().put("⏳ " + e.optString("text")).put(-1).put(e.optString("hm")).put(-1));
+                // Today's food (what's waiting from the phone first, then newest first), then RECENT: earlier foods to add again with ＋.
                 JSONObject h = w.optJSONObject("h");
+                try {
+                    for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) rows.add(new JSONArray("[\"⏳ Photo\",-1,\"\",-1,-1,-1,\"read when the Tracker opens\",\"\",\"pending\"]"));
+                    for (JSONObject e : Phone.pendingOf(c, "food")) {
+                        boolean known = e.has("kcal");
+                        rows.add(new JSONArray().put("⏳ " + e.optString("text")).put(known ? e.optInt("kcal") : -1).put(e.optString("hm"))
+                                .put(known ? e.optInt("p") : -1).put(known ? e.optInt("c") : -1).put(known ? e.optInt("f") : -1)
+                                .put(known ? "adding when the Tracker syncs" : "estimated when the Tracker opens").put("").put("pending"));
+                    }
+                } catch (Exception ignored) {}
+                Set<String> today = new HashSet<>();
                 JSONArray f = h != null ? h.optJSONArray("foods") : null;
-                for (int i = f == null ? -1 : f.length() - 1; i >= 0; i--) if (f.optJSONArray(i) != null) rows.add(f.optJSONArray(i));
+                for (int i = f == null ? -1 : f.length() - 1; i >= 0; i--) {
+                    JSONArray x = f.optJSONArray(i);
+                    if (x != null) { rows.add(x); today.add(x.optString(0).toLowerCase(java.util.Locale.US)); }
+                }
+                if (rows.isEmpty()) rows.add(new JSONArray().put("__head").put("Nothing logged yet today"));
+                JSONArray rc = h != null ? h.optJSONArray("recent") : null;   // [name, kcal, p, c, f, serving], most recent first
+                boolean head = false;
+                for (int i = 0; rc != null && i < rc.length(); i++) {
+                    JSONArray x = rc.optJSONArray(i);
+                    if (x == null || today.contains(x.optString(0).toLowerCase(java.util.Locale.US))) continue;
+                    if (!head) { rows.add(new JSONArray().put("__head").put("Recent  ·  ＋ adds it again")); head = true; }
+                    rows.add(new JSONArray().put(x.optString(0)).put(x.optInt(1)).put("").put(x.optInt(2)).put(x.optInt(3)).put(x.optInt(4))
+                            .put(x.optString(5)).put("").put("recent"));
+                }
             } else if (kind.startsWith("pages:")) {
                 JSONObject pg = w.optJSONObject("pages");
                 JSONArray a = pg != null ? pg.optJSONArray(kind.substring(6)) : null;
@@ -126,7 +148,7 @@ public class ListService extends RemoteViewsService {
             if (kind.equals("assign")) return assign(r);
             if (kind.equals("inbox")) return inbox(r);
             if (kind.equals("acct")) return account(r.optJSONObject(0), pos);
-            if (kind.equals("foods")) return food(r);
+            if (kind.equals("foods")) return foodRow(r);
             if (kind.equals("health")) return healthPage(r.optString(0));
             if (kind.equals("days")) return dayPage(r.optJSONObject(0), pos, rows.size());
             return event(r);
@@ -242,6 +264,28 @@ public class ListService extends RemoteViewsService {
                 b.append(" · " + p + " g P");
                 b.setSpan(new android.text.style.ForegroundColorSpan(0xFF6B9CEC), s2, b.length(), 0);
             }
+        }
+
+        /** A food card with ＋ (add it again), or a section heading. Pending entries have no ＋. */
+        RemoteViews foodRow(JSONArray r) {
+            if ("__head".equals(r.optString(0))) {
+                RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.item_food_head);
+                v.setTextViewText(R.id.fh_text, r.optString(1).toUpperCase(java.util.Locale.US));
+                Widgets.ts(v, R.id.fh_text, 12, k);
+                v.setOnClickFillInIntent(R.id.fh_text, new Intent());
+                return v;
+            }
+            RemoteViews v = Widgets.foodCard(c, r, k);
+            boolean pending = "pending".equals(r.optString(8));
+            v.setOnClickFillInIntent(R.id.fc_root, new Intent());   // a tap on the card itself does nothing
+            v.setViewVisibility(R.id.fc_add, pending ? View.GONE : View.VISIBLE);
+            if (!pending) {
+                v.setOnClickFillInIntent(R.id.fc_add, new Intent().putExtra("op", "food").putExtra("again", r.optString(0))
+                        .putExtra("kcal", String.valueOf(Math.max(0, r.optInt(1)))).putExtra("p", String.valueOf(Math.max(0, r.optInt(3))))
+                        .putExtra("c", String.valueOf(Math.max(0, r.optInt(4)))).putExtra("f", String.valueOf(Math.max(0, r.optInt(5)))));
+                Widgets.ts(v, R.id.fc_add, 20, k);
+            }
+            return v;
         }
 
         /** [name, kcal, "HH:MM", protein g] like a row in the Tracker's food log. */

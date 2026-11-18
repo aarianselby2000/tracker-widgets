@@ -45,6 +45,11 @@ final class Widgets {
         JSONObject w = WidgetData.w(c);
         for (int id : m.getAppWidgetIds(new ComponentName(c, FoodWidget.class))) {
             m.updateAppWidget(id, food(c, d, w, id));
+            String fs = foodSig(c, w, id), fk = "food_sig_" + id;   // reload the list only when it changed (keeps your scroll place)
+            if (!fs.equals(WidgetData.prefs(c).getString(fk, ""))) {
+                WidgetData.prefs(c).edit().putString(fk, fs).apply();
+                m.notifyAppWidgetViewDataChanged(id, R.id.h_list);
+            }
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, MoneyWidget.class))) {
             m.updateAppWidget(id, money(c, d, w, id));
@@ -80,6 +85,16 @@ final class Widgets {
         return Integer.toHexString(s.toString().hashCode()) + ":" + s.length();
     }
 
+    /** What the food list shows: today's foods, recent foods, entries still waiting, and the widget's size. */
+    private static String foodSig(Context c, JSONObject w, int id) {
+        JSONObject h = w.optJSONObject("h");
+        StringBuilder s = new StringBuilder(h == null ? "" : String.valueOf(h.optJSONArray("foods")) + h.optJSONArray("recent"));
+        for (JSONObject e : Phone.pendingOf(c, "food")) s.append('|').append(e.optString("id"));
+        for (JSONObject e : Phone.pendingOf(c, "photo")) s.append('|').append(e.optString("id"));
+        s.append('|').append(scale(c, id));
+        return Integer.toHexString(s.toString().hashCode()) + ":" + s.length();
+    }
+
     // ---------- Health ----------
 
     static RemoteViews food(Context c, Map<String, String> d, JSONObject w, int wid) {
@@ -95,6 +110,13 @@ final class Widgets {
         Double water = h != null ? opt(h, "water") : num(d.get("water_oz")), waterG = h != null ? opt(h, "waterG") : num(d.get("water_goal_oz"));
         double addW = Phone.pendingWater(c);
         if (addW > 0) water = (water == null ? 0 : water) + addW;
+        // Foods added again from the widget count right away (their numbers are known).
+        for (JSONObject e : Phone.pendingOf(c, "food")) if (e.has("kcal")) {
+            kcal = (kcal == null ? 0 : kcal) + e.optDouble("kcal", 0);
+            p = (p == null ? 0 : p) + e.optDouble("p", 0);
+            cb = (cb == null ? 0 : cb) + e.optDouble("c", 0);
+            f = (f == null ? 0 : f) + e.optDouble("f", 0);
+        }
         v.removeAllViews(R.id.h_bars);
         v.addView(R.id.h_bars, Pages.row(c, hbar("Calories", kcal, kcalT, "kcal", "kcal"), k));
         v.addView(R.id.h_bars, Pages.row(c, hbar("Protein", p, pT, "g", "p"), k));
@@ -108,20 +130,8 @@ final class Widgets {
         v.setTextViewText(R.id.h_left, left + (caf == null ? "" : (left.isEmpty() ? "" : "  ·  ") + "☕ " + fmt(caf) + " mg caffeine"));
         ts(v, R.id.h_left, 11.5f, k);
         ts(v, R.id.h_food_h, 12, k);
-        // Today's food, newest first (what you added on the phone first, until the Tracker logs it).
-        v.removeAllViews(R.id.h_log);
-        List<JSONArray> foods = new java.util.ArrayList<>();
-        try {
-            for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) foods.add(new JSONArray("[\"⏳ Photo\",-1,\"\",-1,-1,-1,\"read when the Tracker opens\",\"\"]"));
-            for (JSONObject e : Phone.pendingOf(c, "food")) foods.add(new JSONArray().put("⏳ " + e.optString("text")).put(-1).put(e.optString("hm")).put(-1).put(-1).put(-1).put("estimated when the Tracker opens").put(""));
-        } catch (Exception ignored) {}
-        JSONArray fl = h != null ? h.optJSONArray("foods") : null;
-        for (int i = fl == null ? -1 : fl.length() - 1; i >= 0; i--) if (fl.optJSONArray(i) != null) foods.add(fl.optJSONArray(i));
-        int[] sz = sizeDp(c, wid);
-        int fit = (int) Math.max(1, (sz[1] - (26 + 5 * 34 + 20 + 26 + 112) * k - 26) / (56 * k));
-        for (int i = 0; i < Math.min(fit, foods.size()); i++) v.addView(R.id.h_log, foodCard(c, foods.get(i), k));
-        if (foods.isEmpty()) v.addView(R.id.h_log, Pages.note(c, "Nothing logged yet today.", k));
-        else if (foods.size() > fit) v.addView(R.id.h_log, Pages.note(c, "+" + (foods.size() - fit) + " more today", k));
+        // Today's food and, under it, recent foods, each with ＋ to add it again: a scrolling list (ListService kind "foods").
+        list(c, v, wid, R.id.h_list, R.id.h_empty, "foods");
         boolean supps = "yes".equals(h != null ? h.optString("supps") : d.get("supplements"));
         Boolean ps = Phone.pendingSupps(c);
         if (ps != null) supps = ps;

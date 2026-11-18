@@ -72,6 +72,16 @@ public class ActionReceiver extends BroadcastReceiver {
                     e.put("do", i.getStringExtra("do"));
                     msg = "Study timer started";
                     break;
+                case "food": {   // ＋ on a food in the Health widget: the Tracker logs the same food again with its saved numbers
+                    String name = i.getStringExtra("again");
+                    if (name == null || name.isEmpty()) return;
+                    e.put("text", name).put("again", name);
+                    for (String key : new String[]{"kcal", "p", "c", "f"}) {
+                        try { e.put(key, Double.parseDouble(i.getStringExtra(key))); } catch (Exception ignored) {}
+                    }
+                    msg = "Adding " + name + " again";
+                    break;
+                }
                 case "prog":
                     e.put("aid", i.getStringExtra("id")).put("v", i.getStringExtra("v"));
                     msg = null;
