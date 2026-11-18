@@ -68,9 +68,41 @@ final class Widgets {
         common(c, v, d, "#health", FoodWidget.class);
         float k = scale(c, wid);
         title(v, k);
-        // Health's tabs, one page each: swipe up and down (Today, Summary, Workout, Food, Water, Body, Progress, Sick).
-        pageHost(c, v, wid, "health");
         JSONObject h = w.optJSONObject("h");
+        // The Tracker's food bars (blue on the way, green on target, orange over) and water.
+        Double kcal = h != null ? opt(h, "kcal") : num(d.get("kcal")), kcalT = h != null ? opt(h, "kcalT") : num(d.get("kcal_target"));
+        Double p = h != null ? opt(h, "p") : num(d.get("protein")), pT = h != null ? opt(h, "pT") : num(d.get("protein_target"));
+        Double cb = h != null ? opt(h, "c") : null, cT = h != null ? opt(h, "cT") : null, f = h != null ? opt(h, "f") : null, fT = h != null ? opt(h, "fT") : null;
+        Double water = h != null ? opt(h, "water") : num(d.get("water_oz")), waterG = h != null ? opt(h, "waterG") : num(d.get("water_goal_oz"));
+        double addW = Phone.pendingWater(c);
+        if (addW > 0) water = (water == null ? 0 : water) + addW;
+        v.removeAllViews(R.id.h_bars);
+        v.addView(R.id.h_bars, Pages.row(c, hbar("Calories", kcal, kcalT, "kcal", "kcal"), k));
+        v.addView(R.id.h_bars, Pages.row(c, hbar("Protein", p, pT, "g", "p"), k));
+        v.addView(R.id.h_bars, Pages.row(c, hbar("Carbs", cb, cT, "g", "c"), k));
+        v.addView(R.id.h_bars, Pages.row(c, hbar("Fat", f, fT, "g", "f"), k));
+        v.addView(R.id.h_bars, Pages.row(c, hbar("Water", water, waterG, "oz", "w"), k));
+        String left = "";
+        if (kcal != null && kcalT != null && kcalT > 0)
+            left = kcal < kcalT ? fmt(kcalT - kcal) + " kcal and " + fmt(Math.max(0, (pT == null ? 0 : pT) - (p == null ? 0 : p))) + " g protein left" : "Calorie target reached";
+        Double caf = h != null ? opt(h, "caf") : num(d.get("caffeine_mg"));
+        v.setTextViewText(R.id.h_left, left + (caf == null ? "" : (left.isEmpty() ? "" : "  ·  ") + "☕ " + fmt(caf) + " mg caffeine"));
+        ts(v, R.id.h_left, 11.5f, k);
+        ts(v, R.id.h_food_h, 12, k);
+        // Today's food, newest first (what you added on the phone first, until the Tracker logs it).
+        v.removeAllViews(R.id.h_log);
+        List<JSONArray> foods = new java.util.ArrayList<>();
+        try {
+            for (int i = 0; i < Phone.pendingOf(c, "photo").size(); i++) foods.add(new JSONArray("[\"⏳ Photo\",-1,\"\",-1,-1,-1,\"read when the Tracker opens\",\"\"]"));
+            for (JSONObject e : Phone.pendingOf(c, "food")) foods.add(new JSONArray().put("⏳ " + e.optString("text")).put(-1).put(e.optString("hm")).put(-1).put(-1).put(-1).put("estimated when the Tracker opens").put(""));
+        } catch (Exception ignored) {}
+        JSONArray fl = h != null ? h.optJSONArray("foods") : null;
+        for (int i = fl == null ? -1 : fl.length() - 1; i >= 0; i--) if (fl.optJSONArray(i) != null) foods.add(fl.optJSONArray(i));
+        int[] sz = sizeDp(c, wid);
+        int fit = (int) Math.max(1, (sz[1] - (26 + 5 * 34 + 20 + 26 + 112) * k - 26) / (56 * k));
+        for (int i = 0; i < Math.min(fit, foods.size()); i++) v.addView(R.id.h_log, foodCard(c, foods.get(i), k));
+        if (foods.isEmpty()) v.addView(R.id.h_log, Pages.note(c, "Nothing logged yet today.", k));
+        else if (foods.size() > fit) v.addView(R.id.h_log, Pages.note(c, "+" + (foods.size() - fit) + " more today", k));
         boolean supps = "yes".equals(h != null ? h.optString("supps") : d.get("supplements"));
         Boolean ps = Phone.pendingSupps(c);
         if (ps != null) supps = ps;
@@ -84,8 +116,16 @@ final class Widgets {
         v.setOnClickPendingIntent(R.id.btn_supps, act(c, "supps", "on", supps ? "false" : "true"));
         v.setOnClickPendingIntent(R.id.btn_food, entry(c, "food", null, false));
         v.setOnClickPendingIntent(R.id.btn_cam, entry(c, "food", null, true));
-        for (int id : new int[]{R.id.btn_w1, R.id.btn_w2, R.id.btn_w3, R.id.btn_supps, R.id.btn_food}) ts(v, id, 12, k);
         return v;
+    }
+
+    /** A food bar row: ["bar", label, "1,820 / 3,330 kcal", pct, color] with the Food tab's color rules. */
+    private static JSONArray hbar(String label, Double a, Double t, String unit, String kind) {
+        double v = a == null ? 0 : a, pct = t != null && t > 0 ? v / t * 100 : 0;
+        String col = kind.equals("w") ? (pct >= 100 ? "g" : "w") : t == null || t <= 0 ? "b"
+                : kind.equals("kcal") ? (pct > 105 ? "o" : pct >= 90 ? "g" : "b") : kind.equals("p") ? (pct >= 100 ? "g" : "b") : (pct > 115 ? "o" : pct >= 90 ? "g" : "b");
+        return new JSONArray().put("bar").put(label).put((a == null ? "–" : fmt(v)) + (t != null && t > 0 ? " / " + fmt(t) : "") + " " + unit)
+                .put((int) Math.min(100, Math.round(pct))).put(col);
     }
 
     /** One food: [name, kcal, "HH:MM", protein, carbs, fat, serving, source]. */
@@ -154,14 +194,89 @@ final class Widgets {
         common(c, v, d, "#money", MoneyWidget.class);
         float k = scale(c, wid);
         title(v, k);
-        // Money's tabs, one page each: Overview (checking, savings, cash), Entries, Breakdown.
-        pageHost(c, v, wid, "money");
+        JSONObject m = w.optJSONObject("m");
+        JSONArray acc = m != null ? m.optJSONArray("acc") : null;
+        int n = acc == null ? 0 : acc.length(), front = n == 0 ? 0 : Math.floorMod(WidgetData.prefs(c).getInt("money_front_" + wid, 0), n);
+        // Checking, Savings and Cash as a stack of cards: the front one shows its latest entries; tap a card behind to bring it forward.
+        int[][] peeks = {{R.id.peek1, R.id.peek1_n, R.id.peek1_b}, {R.id.peek2, R.id.peek2_n, R.id.peek2_b}};
+        for (int i = 0; i < 2; i++) {
+            if (n < i + 2) { v.setViewVisibility(peeks[i][0], View.GONE); continue; }
+            int idx = (front + 1 + i) % n;
+            JSONObject a = acc.optJSONObject(idx);
+            v.setTextViewText(peeks[i][1], a.optString("name").toUpperCase(Locale.US));
+            v.setTextColor(peeks[i][1], acctColor(a.optString("k")));
+            v.setTextViewText(peeks[i][2], a.isNull("bal") ? "–" : dollars(a.optDouble("bal") + pendingEffect(c, a.optString("k"))));
+            Pages.click(c, v, peeks[i][0], "op", "acct", "wid", String.valueOf(wid), "to", String.valueOf(idx));
+        }
+        if (n > 0) frontCard(c, v, acc.optJSONObject(front), k, wid);
+        Double spent = m != null ? opt(m, "spent") : num(d.get("month_spent"));
+        for (JSONObject e : Phone.pendingOf(c, "money"))
+            if ("out".equals(e.optString("dir")) && SPEND.contains(e.optString("type"))) spent = (spent == null ? 0 : spent) + e.optDouble("amount", 0);
+        v.setTextViewText(R.id.spent_text, spent == null ? "" : "Spent this month  " + dollars(spent));
+        ts(v, R.id.spent_text, 12.5f, k);
         v.setOnClickPendingIntent(R.id.btn_out, entry(c, "money", "out", false));
         v.setOnClickPendingIntent(R.id.btn_in, entry(c, "money", "in", false));
         v.setOnClickPendingIntent(R.id.btn_move, entry(c, "money", "move", false));
         v.setOnClickPendingIntent(R.id.btn_cam, entry(c, "money", "out", true));
-        for (int id : new int[]{R.id.btn_out, R.id.btn_in, R.id.btn_move}) ts(v, id, 12, k);
         return v;
+    }
+
+    static int acctColor(String key) { return key.equals("savings") ? 0xFF6B9CEC : key.equals("cash") ? 0xFFE8BD34 : 0xFF55B981; }
+
+    private static double pendingEffect(Context c, String key) {
+        double sum = 0;
+        for (JSONObject e : Phone.pendingOf(c, "money")) sum += ListService.Factory.effect(key, e.optString("dir"), e.optString("type"), e.optString("card"), e.optDouble("amount", 0));
+        return sum;
+    }
+
+    /** The front card: balance, how it stands, and its latest entries (with ones from the phone first). */
+    private static void frontCard(Context c, RemoteViews v, JSONObject a, float k, int wid) {
+        String key = a.optString("k");
+        int col = acctColor(key);
+        v.setTextViewText(R.id.f_name, a.optString("name").toUpperCase(Locale.US));
+        v.setTextColor(R.id.f_name, col);
+        double pend = pendingEffect(c, key), bal = a.optDouble("bal", 0) + pend;
+        boolean has = !a.isNull("bal") && a.has("bal");
+        v.setTextViewText(R.id.f_bal, has ? (pend != 0 ? "≈ " : "") + dollars(bal) : "–");
+        v.setTextColor(R.id.f_bal, INK);
+        ts(v, R.id.f_name, 14, k);
+        ts(v, R.id.f_bal, 32, k);
+        ts(v, R.id.f_note, 11.5f, k);
+        String note = a.optString("note");
+        int bar = -1, pct = 0;
+        if (key.equals("checking") && has) {
+            double min = a.optDouble("min", 0), buf = a.optDouble("buffer", 0), room = bal - min;
+            String st = room < 0 ? "under" : room <= buf ? "close" : "ok";
+            bar = st.equals("under") ? R.id.f_bar_r : st.equals("close") ? R.id.f_bar_a : R.id.f_bar_g;
+            v.setTextColor(R.id.f_bal, st.equals("under") ? 0xFFF07070 : st.equals("close") ? 0xFFF0A040 : 0xFF55B981);
+            pct = room <= 0 ? 0 : (int) Math.round(Math.min(1, room / Math.max(min * 2, 200)) * 100);
+            note = room < 0 ? dollars(-room) + " below your minimum" : dollars(room) + " of room above your " + dollars(min) + " minimum";
+        } else if (key.equals("savings") && has && a.optDouble("goal", 0) > 0) {
+            bar = R.id.f_bar_b;
+            pct = (int) Math.round(Math.max(0, Math.min(1, bal / a.optDouble("goal"))) * 100);
+        }
+        v.setTextViewText(R.id.f_note, note);
+        for (int id : new int[]{R.id.f_bar_g, R.id.f_bar_a, R.id.f_bar_r, R.id.f_bar_b}) v.setViewVisibility(id, id == bar ? View.VISIBLE : View.GONE);
+        v.setViewVisibility(R.id.f_bars, bar == -1 ? View.GONE : View.VISIBLE);
+        if (bar != -1) v.setProgressBar(bar, 100, pct, false);
+        v.removeAllViews(R.id.f_recent);
+        List<JSONArray> rows = new java.util.ArrayList<>();
+        for (JSONObject e : Phone.pendingOf(c, "money")) {
+            double eff = ListService.Factory.effect(key, e.optString("dir"), e.optString("type"), e.optString("card"), e.optDouble("amount", 0));
+            if (eff != 0) rows.add(new JSONArray().put("row").put("⏳ " + e.optString("source")).put(signed(eff)).put(e.optString("type") + " · waiting for the Tracker").put(eff < 0 ? "#F07070" : "#55B981").put(eff < 0 ? "#F07070" : "#55B981"));
+        }
+        JSONArray r = a.optJSONArray("recent");
+        for (int i = 0; r != null && i < r.length(); i++) {
+            JSONArray x = r.optJSONArray(i);
+            if (x == null) continue;
+            double amt = x.optDouble(2, 0);
+            rows.add(new JSONArray().put("row").put(x.optString(1)).put(signed(amt)).put(x.optString(3) + " · " + x.optString(0)).put(amt < 0 ? "#F07070" : "#55B981").put(amt < 0 ? "#F07070" : "#55B981"));
+        }
+        int[] sz = sizeDp(c, wid);
+        int fit = (int) Math.max(1, (sz[1] - (26 + 54 + 150 + 30 + 60) * k - 30) / (46 * k));
+        for (int i = 0; i < Math.min(fit, rows.size()); i++) v.addView(R.id.f_recent, Pages.row(c, rows.get(i), k));
+        if (rows.isEmpty()) v.addView(R.id.f_recent, Pages.note(c, "No entries yet.", k));
+        v.setViewVisibility(R.id.f_recent_h, View.VISIBLE);
     }
 
     // ---------- Schedule: Aarian and Miranda side by side ----------
@@ -169,12 +284,71 @@ final class Widgets {
     static RemoteViews schedule(Context c, Map<String, String> d, JSONObject w, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_schedule);
         common(c, v, d, "#schedule", ScheduleWidget.class);
-        title(v, scale(c, wid));
+        float k = scale(c, wid);
+        title(v, k);
         JSONObject s = w.optJSONObject("s");
-        v.setTextViewText(R.id.title_text, s != null && !LocalDate.now().toString().equals(s.optString("date")) ? "SCHEDULE · OPEN THE TRACKER" : "SCHEDULE");
-        // The Schedule's tabs, one page each: Today (the grid, with ‹ › for other days), Week, Insights, Sleep, Study.
-        pageHost(c, v, wid, "schedule");
+        LocalDate today = LocalDate.now();
+        v.setTextViewText(R.id.title_text, s != null && !today.toString().equals(s.optString("date")) ? "SCHEDULE · OPEN THE TRACKER" : "SCHEDULE");
+        // The day (‹ › for the rest of the week, tap the date for today), drawn on the time grid.
+        JSONArray days = s != null ? s.optJSONArray("days") : null;
+        int count = 1 + (days == null ? 0 : days.length()), off = Math.min(count - 1, dayOffset(c, wid));
+        JSONObject day = off == 0 || days == null ? s : days.optJSONObject(off - 1);
+        LocalDate date;
+        try { date = LocalDate.parse(day.optString("date")); } catch (Exception e) { date = today.plusDays(off); }
+        String dn = off == 0 ? "TODAY" : off == 1 ? "TOMORROW" : date.format(DateTimeFormatter.ofPattern("EEEE", Locale.US)).toUpperCase(Locale.US);
+        v.setTextViewText(R.id.day_title, dn + " · " + date.format(DateTimeFormatter.ofPattern("EEE M/d", Locale.US)).toUpperCase(Locale.US));
+        ts(v, R.id.day_title, 13.5f, k);
+        String ws = String.valueOf(wid);
+        Pages.click(c, v, R.id.day_prev, "op", "day", "wid", ws, "to", String.valueOf((off - 1 + count) % count));
+        Pages.click(c, v, R.id.day_next, "op", "day", "wid", ws, "to", String.valueOf((off + 1) % count));
+        Pages.click(c, v, R.id.day_title, "op", "day", "wid", ws, "to", "0");
+        int nowMin = LocalTime.now().getHour() * 60 + LocalTime.now().getMinute();
+        v.setViewVisibility(R.id.cards, off == 0 ? View.VISIBLE : View.GONE);
+        if (off == 0 && s != null) {
+            JSONArray study = s.optJSONArray("study");
+            boolean studying = study != null && study.optInt(1) == 1;
+            nowNext(v, s.optJSONArray("me"), nowMin, R.id.now_me, R.id.next_me, "Miranda", studying ? s.optJSONArray("nowMe") : null);
+            nowNext(v, s.optJSONArray("mi"), nowMin, R.id.now_mi, R.id.next_mi, "Aarian", null);
+        }
+        int[] sz = sizeDp(c, wid);
+        float h = Math.max(120, sz[1] - (26 + 28 + 18 + 96) * k - (off == 0 ? 70 * k : 0) - 34);
+        if (day != null) Grid.build(c, v, day.optJSONArray("me"), day.optJSONArray("mi"), off == 0 ? nowMin : -1, Math.max(150, sz[0] - 26), h, k);
+        sleepStudy(c, v, s, k);
         return v;
+    }
+
+    /** Sleep and study under the grid: where things stand, and Going to bed / Woke up and Start / Stop studying. */
+    private static void sleepStudy(Context c, RemoteViews v, JSONObject s, float k) {
+        JSONObject sl = s != null ? s.optJSONObject("sl") : null, st = s != null ? s.optJSONObject("st") : null;
+        List<JSONObject> ps = Phone.pendingOf(c, "sleep"), pt = Phone.pendingOf(c, "study");
+        boolean inBed = !ps.isEmpty() ? "bed".equals(ps.get(ps.size() - 1).optString("do")) : sl != null && !sl.optString("open").isEmpty();
+        JSONArray last = sl != null ? sl.optJSONArray("last") : null;
+        if (inBed) {
+            String since = !ps.isEmpty() ? hmLabel(ps.get(ps.size() - 1).optString("hm")) + " ⏳" : sl.optString("open");
+            v.setTextViewText(R.id.sl_text, "😴 In bed since " + since);
+            v.setTextViewText(R.id.sl_text_sub, "Tap Woke up when you get up");
+        } else {
+            v.setTextViewText(R.id.sl_text, last != null ? "😴 " + hm(last.optInt(0)) + " last night" : "😴 No sleep logged yet");
+            v.setTextViewText(R.id.sl_text_sub, last != null ? last.optString(1) + " – " + last.optString(2) + (sl.isNull("avg") ? "" : " · avg " + hm(sl.optInt("avg"))) : "");
+        }
+        v.setTextViewText(R.id.btn_sleep, inBed ? "☀  Woke up" : "🌙  Going to bed");
+        v.setOnClickPendingIntent(R.id.btn_sleep, act(c, "sleep", "do", inBed ? "wake" : "bed"));
+        boolean studying = !pt.isEmpty() ? "start".equals(pt.get(pt.size() - 1).optString("do")) : st != null && !st.optString("open").isEmpty();
+        if (studying) {
+            String since = !pt.isEmpty() ? hmLabel(pt.get(pt.size() - 1).optString("hm")) + " ⏳" : st.optString("open");
+            v.setTextViewText(R.id.st_text, "📚 Studying since " + since);
+        } else v.setTextViewText(R.id.st_text, "📚 " + hm(st != null ? st.optInt("today") : 0) + " today");
+        v.setTextViewText(R.id.st_text_sub, hm(st != null ? st.optInt("week") : 0) + " this week");
+        v.setTextViewText(R.id.btn_study, studying ? "■  Stop studying" : "▶  Start studying");
+        if (studying) v.setOnClickPendingIntent(R.id.btn_study, entry(c, "study", null, false));
+        else v.setOnClickPendingIntent(R.id.btn_study, act(c, "study", "do", "start"));
+        for (int id : new int[]{R.id.sl_text, R.id.st_text}) ts(v, id, 12, k);
+        for (int id : new int[]{R.id.sl_text_sub, R.id.st_text_sub}) ts(v, id, 10.5f, k);
+        for (int id : new int[]{R.id.btn_sleep, R.id.btn_study}) ts(v, id, 13, k);
+    }
+
+    private static String hmLabel(String hm) {
+        try { String[] q = hm.split(":"); return clock(Integer.parseInt(q[0]) * 60 + Integer.parseInt(q[1])); } catch (Exception e) { return hm; }
     }
 
     static void nowNext(RemoteViews v, JSONArray evs, int now, int nowId, int nextId, String other, JSONArray studyNow) {
@@ -200,9 +374,50 @@ final class Widgets {
     static RemoteViews school(Context c, Map<String, String> d, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_deadlines);
         common(c, v, d, "#school", DeadlinesWidget.class);
-        title(v, scale(c, wid));
-        // School's tabs, one page each: Overview, Homework, Exams, Classes, Grades, Done.
-        pageHost(c, v, wid, "school");
+        float k = scale(c, wid);
+        title(v, k);
+        JSONObject w = WidgetData.w(c), g = w.optJSONObject("g");
+        // Your GPA and each class's letter, like the Grades tab.
+        if (g != null) {
+            v.setTextViewText(R.id.gpa, g.isNull("gpa") ? "–" : String.format(Locale.US, "%.2f", g.optDouble("gpa")));
+            v.setTextViewText(R.id.gpa_sub, "est. GPA" + (g.isNull("cgpa") ? "" : String.format(Locale.US, " · cum %.2f", g.optDouble("cgpa"))));
+            SpannableStringBuilder b = new SpannableStringBuilder();
+            JSONArray cl = g.optJSONArray("cls");
+            for (int i = 0; cl != null && i < cl.length(); i++) {
+                JSONArray x = cl.optJSONArray(i);
+                if (x == null) continue;
+                if (b.length() > 0) b.append("\n");
+                b.append(x.optString(0)).append("  ");
+                int s0 = b.length();
+                double pc = x.optDouble(2, Double.NaN);
+                b.append(x.optString(1));
+                int col = Double.isNaN(pc) ? MUTED : pc >= 90 ? 0xFF55B981 : pc >= 80 ? 0xFF6B9CEC : pc >= 70 ? 0xFFF0A040 : 0xFFF07070;
+                b.setSpan(new ForegroundColorSpan(col), s0, b.length(), 0);
+                b.setSpan(new StyleSpan(android.graphics.Typeface.BOLD), s0, b.length(), 0);
+                if (!Double.isNaN(pc)) { int s1 = b.length(); b.append(String.format(Locale.US, " %.1f%%", pc)); b.setSpan(new ForegroundColorSpan(MUTED), s1, b.length(), 0); }
+            }
+            v.setTextViewText(R.id.gpa_cls, b);
+            v.setInt(R.id.gpa_cls, "setMaxLines", Math.max(2, Math.min(cl == null ? 2 : cl.length(), 8)));
+        } else v.setTextViewText(R.id.gpa_cls, "Open School → Grades in the Tracker once so your grades show here.");
+        ts(v, R.id.gpa, 28, k);
+        ts(v, R.id.gpa_cls, 11.5f, k);
+        ts(v, R.id.due_h, 12, k);
+        // What's due soon, with the same status buttons as School.
+        v.removeAllViews(R.id.due_list);
+        JSONArray a = w.optJSONArray("a");
+        int n = a == null ? 0 : a.length();
+        int[] sz = sizeDp(c, wid);
+        int lines = g != null && g.optJSONArray("cls") != null ? Math.min(g.optJSONArray("cls").length(), 8) : 2;
+        int fit = (int) Math.max(1, (sz[1] - (26 + 30 + lines * 17 + 26) * k - 40) / (84 * k));
+        for (int i = 0; i < Math.min(fit, n); i++) {
+            JSONArray x = a.optJSONArray(i);
+            if (x == null) continue;
+            JSONArray row = new JSONArray().put("prog");
+            for (int j = 0; j < x.length(); j++) row.put(x.opt(j));
+            v.addView(R.id.due_list, Pages.prog(c, row, k));
+        }
+        if (n == 0) v.addView(R.id.due_list, Pages.note(c, "Nothing due. Open the Tracker once so this fills in.", k));
+        else if (n > fit) v.addView(R.id.due_list, Pages.note(c, "+" + (n - fit) + " more in the Tracker", k));
         return v;
     }
 
@@ -255,19 +470,6 @@ final class Widgets {
         Intent i = new Intent(c, provider).setAction(BaseWidget.ACTION_FLIP + "." + what + "." + wid + "." + to)
                 .putExtra("what", what).putExtra("to", to).putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, wid);
         return PendingIntent.getBroadcast(c, (what + wid + "." + to).hashCode(), i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-    }
-
-    /** The section's current tab, drawn to fill the widget; ‹ › and tapping the page move between tabs. */
-    private static void pageHost(Context c, RemoteViews v, int wid, String section) {
-        JSONObject pg = WidgetData.w(c).optJSONObject("pages");
-        JSONArray pages = pg != null ? pg.optJSONArray(section) : null;
-        v.removeAllViews(R.id.page_host);
-        boolean none = pages == null || pages.length() == 0;
-        v.setViewVisibility(R.id.page_host, none ? View.GONE : View.VISIBLE);
-        v.setViewVisibility(R.id.page_empty, none ? View.VISIBLE : View.GONE);
-        if (none) return;
-        int pos = Pages.current(c, section, wid, pages.length());
-        v.addView(R.id.page_host, Pages.page(c, section, pages, pos, wid, scale(c, wid)));
     }
 
     /** A section's tabs as a stack of pages (ListService kind "pages:<section>"); buttons on them go to ActionReceiver. */

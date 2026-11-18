@@ -20,6 +20,12 @@ public class ActionReceiver extends BroadcastReceiver {
     public void onReceive(Context c, Intent i) {
         String op = i.getStringExtra("op");
         if (op == null || op.equals("none")) return;
+        if (op.equals("acct")) {   // Money: bring an account's card to the front
+            int wid = num(i.getStringExtra("wid"));
+            if (wid != -1) WidgetData.prefs(c).edit().putInt("money_front_" + wid, num(i.getStringExtra("to"))).apply();
+            Widgets.updateAll(c);
+            return;
+        }
         if (op.equals("day") || op.equals("page")) {   // which day or tab a widget shows: nothing to send
             int wid = num(i.getStringExtra("wid")), to = num(i.getStringExtra("to"));
             if (wid == -1) return;
@@ -49,6 +55,16 @@ public class ActionReceiver extends BroadcastReceiver {
                     msg = on ? "Supplements checked" : "Supplements unchecked";
                     break;
                 }
+                case "sleep": {
+                    String what = i.getStringExtra("do");
+                    e.put("do", what);
+                    msg = "bed".equals(what) ? "Good night 🌙" : "Good morning ☀";
+                    break;
+                }
+                case "study":
+                    e.put("do", i.getStringExtra("do"));
+                    msg = "Study timer started";
+                    break;
                 case "prog":
                     e.put("id", i.getStringExtra("id")).put("v", i.getStringExtra("v"));
                     msg = null;

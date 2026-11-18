@@ -82,7 +82,7 @@ public class EntryActivity extends Activity {
         super.onCreate(b);
         mode = getIntent().getStringExtra("mode");
         if (mode == null) mode = "food";
-        accent = mode.equals("money") ? MONEY : mode.equals("quick") ? INBOX : HEALTH;
+        accent = mode.equals("money") ? MONEY : mode.equals("quick") ? INBOX : mode.equals("study") ? 0xFF3EC2AC : HEALTH;
         cond = Typeface.create("sans-serif-condensed", Typeface.BOLD);
         ScrollView scroll = new ScrollView(this);
         box = new LinearLayout(this);
@@ -106,6 +106,7 @@ public class EntryActivity extends Activity {
         }
         if (mode.equals("money")) money(getIntent().getStringExtra("dir"));
         else if (mode.equals("quick")) quick();
+        else if (mode.equals("study")) studyDone();
         else food();
         if (b == null && getIntent().getBooleanExtra("camera", false)) takePhoto();
         else if (photoB64 != null) showPhoto(null);
@@ -132,6 +133,33 @@ public class EntryActivity extends Activity {
             if (s.isEmpty()) { mainText.setError("Type what you ate, or add a photo"); return; }
             send(new JSONObject().put("op", "food").put("text", cut(s, 300)), "Added. The Tracker estimates it when it next opens.");
         });
+    }
+
+    // ---------- Schedule: Done studying (the same two questions as the Tracker's form) ----------
+
+    private String studyKind = "hw";
+    private int studyFocus = 4;
+
+    private void studyDone() {
+        header("DONE STUDYING", R.drawable.ic_schedule);
+        hint("Stopped now. The Tracker saves the session the next time it's open.");
+        label("WHAT WAS IT");
+        Flow kinds = new Flow(this);
+        box.addView(kinds, full());
+        label("HOW LOCKED IN WERE YOU");
+        Flow focus = new Flow(this);
+        box.addView(focus, full());
+        String[][] ks = {{"hw", "Homework"}, {"study", "Studying"}, {"both", "Both"}};
+        String[] fl = {"1 Not really", "2 Distracted", "3 On and off", "4 Focused", "5 Locked in"};
+        Runnable[] draw = new Runnable[1];
+        draw[0] = () -> {
+            kinds.removeAllViews();
+            for (String[] x : ks) { TextView t = chip(x[1], x[0].equals(studyKind)); t.setOnClickListener(v -> { studyKind = x[0]; draw[0].run(); }); kinds.addView(t); }
+            focus.removeAllViews();
+            for (int i = 0; i < fl.length; i++) { final int f = i + 1; TextView t = chip(fl[i], f == studyFocus); t.setOnClickListener(v -> { studyFocus = f; draw[0].run(); }); focus.addView(t); }
+        };
+        draw[0].run();
+        primary("Done studying", () -> send(new JSONObject().put("op", "study").put("do", "stop").put("kind", studyKind).put("focus", studyFocus), "Stopped. The Tracker logs it when it next opens."));
     }
 
     // ---------- Inbox: Quick add ----------
