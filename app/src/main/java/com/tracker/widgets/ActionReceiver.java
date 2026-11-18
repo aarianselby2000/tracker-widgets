@@ -26,6 +26,18 @@ public class ActionReceiver extends BroadcastReceiver {
             Widgets.updateAll(c);
             return;
         }
+        if (op.equals("stepday") || op.equals("steppage")) {   // Steps: which day shows big, which week the strip shows
+            int wid = num(i.getStringExtra("wid"));
+            String to = i.getStringExtra("to");
+            if (wid != -1) {
+                android.content.SharedPreferences.Editor ed = WidgetData.prefs(c).edit().putString("steps_sel_on_" + wid, java.time.LocalDate.now().toString());
+                if (op.equals("stepday")) ed.putString("steps_sel_" + wid, to == null ? "" : to);
+                else ed.putInt("steps_page_" + wid, Math.max(0, num(to)));
+                ed.apply();
+            }
+            Widgets.updateAll(c);
+            return;
+        }
         if (op.equals("calday")) {   // Calendar: show a day's events (empty = back to coming up)
             int wid = num(i.getStringExtra("wid"));
             String to = i.getStringExtra("to");

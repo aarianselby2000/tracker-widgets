@@ -408,13 +408,18 @@ final class Extras {
 
     // ================= Steps (Health Connect; Samsung Health or Google Fit can sync into it) =================
 
-    /** The daily step goal, set in the app (10,000 until you change it). */
+    /** Daily goals, set in the app: steps (10,000), active minutes (90) and active calories (500), Samsung Health's defaults for the last two. */
     static int goal(Context c) { return Math.max(500, WidgetData.prefs(c).getInt("steps_goal", 10000)); }
+    static int goalMin(Context c) { return Math.max(5, WidgetData.prefs(c).getInt("steps_goal_min", 90)); }
+    static int goalKcal(Context c) { return Math.max(50, WidgetData.prefs(c).getInt("steps_goal_kcal", 500)); }
 
-    private static void ring(RemoteViews v, int pct, boolean hit) {
-        v.setViewVisibility(R.id.sp_ring_g, hit ? View.VISIBLE : View.GONE);
-        v.setViewVisibility(R.id.sp_ring_b, hit ? View.GONE : View.VISIBLE);
-        v.setProgressBar(hit ? R.id.sp_ring_g : R.id.sp_ring_b, 100, Math.max(0, Math.min(100, pct)), false);
+    private static int pctOf(long v, int g) { return v <= 0 ? 0 : (int) Math.min(100, v * 100 / g); }
+
+    /** A day's three rings: outer steps, middle active time, center active calories, each filling toward its goal. */
+    private static void rings(Context c, RemoteViews v, int r1, int r2, int r3, long steps, long min, long kcal) {
+        v.setProgressBar(r1, 100, pctOf(steps, goal(c)), false);
+        v.setProgressBar(r2, 100, pctOf(min, goalMin(c)), false);
+        v.setProgressBar(r3, 100, pctOf(kcal, goalKcal(c)), false);
     }
 
     static RemoteViews steps(Context c, int wid) {
@@ -423,72 +428,79 @@ final class Extras {
         android.content.SharedPreferences p = WidgetData.prefs(c);
         long at = p.getLong("steps_at", 0);
         header(c, v, StepsWidget.class, ago(at));
-        if (Build.VERSION.SDK_INT >= 31) {
-            float r = 112 * Math.min(k, 1.3f);
-            v.setViewLayoutWidth(R.id.sp_ring, r, TypedValue.COMPLEX_UNIT_DIP);
-            v.setViewLayoutHeight(R.id.sp_ring, r, TypedValue.COMPLEX_UNIT_DIP);
-        }
-        int goal = goal(c);
-        Widgets.list(c, v, wid, R.id.sp_days, R.id.sp_days_empty, "steps");   // past days, scrolling (ListService kind "steps")
         String raw = p.getString("steps", ""), err = p.getString("steps_err", "");
         // "BG": Health Connect wouldn't let the 30-minute refresh read (only open apps may, unless you allow background reading).
         boolean stale = System.currentTimeMillis() - at > 2 * 3600_000L;
         if (err.equals("BG")) err = stale ? "Tap ⟳ Sync to update your steps (Health Connect lets apps read them only while open unless you allow background reading)." : "";
-        ring(v, 0, false);
-        v.setTextViewText(R.id.sp_sub, String.format(Locale.US, "Goal %,d steps", goal));
-        if (raw.isEmpty()) {
-            note(v, R.id.sp_note, err.isEmpty() ? "Open Tracker Widgets and tap Connect next to Steps (Health Connect), then ⟳ Sync." : err);
-            return v;
-        }
+        Map<String, JSONArray> byDay = new HashMap<>();
+        boolean none = true;
         try {
-            JSONArray days = new JSONArray(raw);   // [[date, steps, active kcal, total kcal], …] oldest first, today last (-1 = not allowed)
-            JSONArray t = days.getJSONArray(days.length() - 1);
-            boolean isToday = LocalDate.now().toString().equals(t.optString(0));
-            long n = isToday ? Math.max(0, t.optLong(1)) : 0;
-            int pct = (int) Math.min(999, n * 100 / goal);
-            boolean hit = n >= goal;
-            v.setTextViewText(R.id.sp_total, isToday ? String.format(Locale.US, "%,d", n) : "–");
-            v.setTextViewText(R.id.sp_pct, isToday ? pct + "%" : "steps");
-            Widgets.ts(v, R.id.sp_total, 24, Math.min(k, 1.3f));
-            ring(v, pct, hit);
-            v.setTextViewText(R.id.sp_sub, !isToday ? String.format(Locale.US, "Goal %,d · tap ⟳ Sync for today", goal)
-                    : hit ? String.format(Locale.US, "Goal of %,d reached 🎉", goal) : String.format(Locale.US, "%,d to go to %,d", goal - n, goal));
-            // calories (active, as Samsung Health shows them; total if that's all there is) and active time
-            // Active calories, as Samsung Health counts them (Health Connect's total adds resting calories, so it isn't shown).
-            long ak = isToday ? t.optLong(2, -1) : -1;
-            v.setTextViewText(R.id.sp_kcal, ak >= 0 ? String.format(Locale.US, "%,d", ak) : "–");
-            v.setTextViewText(R.id.sp_kcal_l, "ACTIVE KCAL");
-            long am = isToday ? p.getLong("steps_active_min", -1) : -1;
-            v.setTextViewText(R.id.sp_active, am < 0 ? "–" : "≈ " + dur(am * 60000));
-            Widgets.ts(v, R.id.sp_kcal, 19, k);
-            Widgets.ts(v, R.id.sp_active, 19, k);
-            Widgets.ts(v, R.id.sp_sub, 12.5f, k);
-            boolean none = true;
-            for (int i = 0; i < days.length(); i++) if (days.getJSONArray(i).optLong(1) > 0) none = false;
-            String src = p.getString("steps_src", "");
-            String nt = err;
-            if (nt.isEmpty() && none)
-                nt = "Health Connect has no steps from Samsung Health yet. In Tracker Widgets, tap Check Samsung Health's access, allow Samsung Health to share "
-                        + "Steps and Active calories, then open Samsung Health once so it sends them, and tap ⟳ Sync.";
-            else if (nt.isEmpty() && !p.getBoolean("steps_all", true))
-                nt = "For calories and active time, open Tracker Widgets and tap More next to Steps.";
-            // Health Connect's steps for today start late (Samsung Health shares what it counts after it's connected): say so.
-            long first = p.getLong("steps_first", 0);
-            ZoneId zz = ZoneId.systemDefault();
-            if (nt.isEmpty() && isToday && first > LocalDate.now().atStartOfDay(zz).plusHours(5).toInstant().toEpochMilli())
-                nt = "Health Connect only has today's steps from " + Instant.ofEpochMilli(first).atZone(zz).format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
-                        + " on, so this is short of Samsung Health's count. Samsung Health shares what it counts after it was connected, so tomorrow should match. "
-                        + "Opening Samsung Health sends its newest steps.";
-            note(v, R.id.sp_note, nt);
-            // The past days' heading: how many, the average of the days Health Connect has, and where the steps come from.
-            long sum = 0;
-            int nd = 0, past = days.length() - (isToday ? 1 : 0);
-            for (int i = 0; i < past; i++) { long st = days.getJSONArray(i).optLong(1, -1); if (st >= 0) { sum += st; nd++; } }
-            v.setTextViewText(R.id.sp_days_h, "PAST " + past + " DAYS" + (nd > 0 ? String.format(Locale.US, "  ·  AVG %,d", sum / nd) : "")
-                    + (src.isEmpty() ? "" : "  ·  " + src.toUpperCase(Locale.US)));
-        } catch (Exception e) {
-            note(v, R.id.sp_note, "Couldn't read your steps. Tap ⟳ Sync.");
+            JSONArray days = new JSONArray(raw.isEmpty() ? "[]" : raw);   // [date, steps, active kcal, -1, active minutes]; -1 = no data
+            for (int i = 0; i < days.length(); i++) {
+                JSONArray x = days.getJSONArray(i);
+                byDay.put(x.optString(0), x);
+                if (x.optLong(1) > 0) none = false;
+            }
+        } catch (Exception ignored) {}
+        LocalDate today = LocalDate.now(), first = today.minusDays(29);
+        String w = String.valueOf(wid);
+        // The day shown big (today unless you tapped another) and which week the strip shows; both go back to today on a new day.
+        LocalDate sel = today;
+        int page = 0;
+        if (today.toString().equals(p.getString("steps_sel_on_" + wid, ""))) {
+            try { String x = p.getString("steps_sel_" + wid, ""); if (!x.isEmpty()) sel = LocalDate.parse(x); } catch (Exception ignored) {}
+            page = Math.max(0, Math.min(4, p.getInt("steps_page_" + wid, 0)));
         }
+        if (sel.isAfter(today) || sel.isBefore(first)) sel = today;
+        JSONArray x = byDay.get(sel.toString());
+        long steps = x == null ? -1 : x.optLong(1, -1), kcal = x == null ? -1 : x.optLong(2, -1), min = x == null ? -1 : x.optLong(4, -1);
+        if (sel.equals(today) && min < 0 && steps >= 0) min = p.getLong("steps_active_min", -1);
+        rings(c, v, R.id.sp_r1, R.id.sp_r2, R.id.sp_r3, steps, min, kcal);
+        v.setTextViewText(R.id.sp_day, sel.equals(today) ? "TODAY" : sel.equals(today.minusDays(1)) ? "YESTERDAY"
+                : sel.format(DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.US)).toUpperCase(Locale.US));
+        v.setTextViewText(R.id.sp_steps, steps < 0 ? "–" : String.format(Locale.US, "%,d", steps));
+        v.setTextViewText(R.id.sp_steps_l, String.format(Locale.US, "/ %,d steps", goal(c)));
+        v.setTextViewText(R.id.sp_active, min < 0 ? "–" : "≈ " + min);
+        v.setTextViewText(R.id.sp_active_l, "/ " + goalMin(c) + " min active");
+        v.setTextViewText(R.id.sp_kcal, kcal < 0 ? "–" : String.format(Locale.US, "%,d", kcal));
+        v.setTextViewText(R.id.sp_kcal_l, String.format(Locale.US, "/ %,d active kcal", goalKcal(c)));
+        for (int id : new int[]{R.id.sp_steps, R.id.sp_active, R.id.sp_kcal}) Widgets.ts(v, id, 20, k);
+        for (int id : new int[]{R.id.sp_steps_l, R.id.sp_active_l, R.id.sp_kcal_l}) Widgets.ts(v, id, 11, k);
+        // The week strip: a small set of rings per day; tap one to show it big, ‹ › for the weeks before (30 days are kept).
+        v.removeAllViews(R.id.sp_strip);
+        LocalDate end = today.minusDays(7L * page);
+        for (LocalDate d = end.minusDays(6); !d.isAfter(end); d = d.plusDays(1)) {
+            RemoteViews cell = new RemoteViews(c.getPackageName(), R.layout.item_ring_day);
+            JSONArray y = byDay.get(d.toString());
+            long ds = y == null ? -1 : y.optLong(1, -1), dk = y == null ? -1 : y.optLong(2, -1), dm = y == null ? -1 : y.optLong(4, -1);
+            if (d.equals(today) && dm < 0 && ds >= 0) dm = p.getLong("steps_active_min", -1);
+            rings(c, cell, R.id.rd_1, R.id.rd_2, R.id.rd_3, ds, dm, dk);
+            cell.setTextViewText(R.id.rd_lab, d.equals(today) ? "TODAY" : d.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.US).toUpperCase(Locale.US));
+            cell.setTextViewText(R.id.rd_num, String.valueOf(d.getDayOfMonth()));
+            boolean inRange = !d.isBefore(first);
+            cell.setTextColor(R.id.rd_num, !inRange ? 0xFF4A525E : d.equals(sel) ? 0xFF74C35E : Widgets.INK);
+            if (d.equals(sel)) cell.setInt(R.id.rd_cell, "setBackgroundResource", R.drawable.soft_plain);
+            if (inRange) Pages.click(c, cell, R.id.rd_cell, "op", "stepday", "wid", w, "to", d.equals(today) ? "" : d.toString());
+            v.addView(R.id.sp_strip, cell);
+        }
+        v.setTextColor(R.id.sp_prev, page < 4 ? Widgets.INK : 0xFF4A525E);
+        v.setTextColor(R.id.sp_next, page > 0 ? Widgets.INK : 0xFF4A525E);
+        if (page < 4) Pages.click(c, v, R.id.sp_prev, "op", "steppage", "wid", w, "to", String.valueOf(page + 1));
+        if (page > 0) Pages.click(c, v, R.id.sp_next, "op", "steppage", "wid", w, "to", String.valueOf(page - 1));
+        // A note when something's missing.
+        String nt = err;
+        if (nt.isEmpty() && raw.isEmpty()) nt = "Open Tracker Widgets and tap Connect next to Steps (Health Connect), then ⟳ Sync.";
+        else if (nt.isEmpty() && none)
+            nt = "Health Connect has no steps from Samsung Health yet. In Tracker Widgets, tap Check Samsung Health's access, allow Samsung Health to share "
+                    + "Steps and Active calories, then open Samsung Health once so it sends them, and tap ⟳ Sync.";
+        else if (nt.isEmpty() && !p.getBoolean("steps_all", true))
+            nt = "For calories and active time, open Tracker Widgets and tap More next to Steps.";
+        long firstEntry = p.getLong("steps_first", 0);
+        ZoneId zz = ZoneId.systemDefault();
+        if (nt.isEmpty() && sel.equals(today) && firstEntry > today.atStartOfDay(zz).plusHours(5).toInstant().toEpochMilli())
+            nt = "Health Connect only has today's steps from " + Instant.ofEpochMilli(firstEntry).atZone(zz).format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
+                    + " on, so today is short of Samsung Health's count.";
+        note(v, R.id.sp_note, nt);
         return v;
     }
 }

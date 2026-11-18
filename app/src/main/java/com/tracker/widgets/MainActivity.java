@@ -57,15 +57,22 @@ public class MainActivity extends Activity {
         findViewById(R.id.steps_hc).setOnClickListener(v -> openHcHome());
         findViewById(R.id.sync_now).setOnClickListener(v -> startActivity(new Intent(this, SyncActivity.class)));
         findViewById(R.id.sync_signin).setOnClickListener(v -> startActivity(new Intent(this, TrackerWebActivity.class)));
-        EditText goal = findViewById(R.id.step_goal);
-        goal.setText(String.valueOf(Extras.goal(this)));
-        goal.addTextChangedListener(new android.text.TextWatcher() {
+        goalField(R.id.step_goal, "steps_goal", Extras.goal(this), 500);
+        goalField(R.id.goal_min, "steps_goal_min", Extras.goalMin(this), 5);
+        goalField(R.id.goal_kcal, "steps_goal_kcal", Extras.goalKcal(this), 50);
+    }
+
+    /** A goal box for the Steps rings: saved as you type (once it's at least the minimum) and the widget redrawn. */
+    private void goalField(int id, String key, int now, int min) {
+        EditText f = findViewById(id);
+        f.setText(String.valueOf(now));
+        f.addTextChangedListener(new android.text.TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int a, int b, int n) {}
             @Override public void onTextChanged(CharSequence s, int a, int b, int n) {}
             @Override public void afterTextChanged(android.text.Editable s) {
                 try {
                     int g = Integer.parseInt(s.toString().trim());
-                    if (g >= 500) { WidgetData.prefs(MainActivity.this).edit().putInt("steps_goal", g).apply(); Widgets.updateAll(MainActivity.this); }
+                    if (g >= min) { WidgetData.prefs(MainActivity.this).edit().putInt(key, g).apply(); Widgets.updateAll(MainActivity.this); }
                 } catch (NumberFormatException ignored) {}
             }
         });

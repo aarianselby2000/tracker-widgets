@@ -102,10 +102,24 @@ object StepsHC {
                             val e = bk.result[ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL] ?: continue
                             kcalBy[bk.startTime.toLocalDate().toString()] = Math.round(e.inKilocalories)
                         }
+                    // Active time per day, estimated from step entries and workouts. A past day doesn't change once it's over, so it's
+                    // kept; today and yesterday are worked out again each time. Row: [date, steps, active kcal, -1, active minutes].
+                    val amOld = try { org.json.JSONObject(p.getString("steps_am", "{}") ?: "{}") } catch (e: Exception) { org.json.JSONObject() }
+                    val amNew = org.json.JSONObject()
                     for (i in 29 downTo 0) {
-                        val d = today.minusDays(i.toLong()).toString()
-                        out.put(JSONArray().put(d).put(stepsBy[d] ?: -1L).put(if (got.contains(ACTIVE)) kcalBy[d] ?: 0L else -1L).put(-1L))
+                        val day = today.minusDays(i.toLong())
+                        val d = day.toString()
+                        val am = when {
+                            i >= 2 && amOld.optLong(d, -1L) >= 0 -> amOld.optLong(d)
+                            !stepsBy.containsKey(d) -> -1L
+                            else -> try {
+                                activeMinutes(client, got, day.atStartOfDay(z).toInstant(), if (i == 0) Instant.now() else day.plusDays(1).atStartOfDay(z).toInstant())
+                            } catch (e: Exception) { -1L }
+                        }
+                        amNew.put(d, am)
+                        out.put(JSONArray().put(d).put(stepsBy[d] ?: -1L).put(if (got.contains(ACTIVE)) kcalBy[d] ?: 0L else -1L).put(-1L).put(am))
                     }
+                    p.edit().putString("steps_am", amNew.toString()).apply()
                     p.edit().putBoolean("steps_all", got.containsAll(PERMISSIONS)).apply()
                     val dayStart = today.atStartOfDay(z).toInstant()
                     p.edit().putString("steps", out.toString()).putLong("steps_at", System.currentTimeMillis())
@@ -160,8 +174,8 @@ object StepsHC {
      * Today's active time, estimated (Health Connect has no "active time" of its own): logged workouts, plus walking outside them,
      * counted from the busiest step source's records at 60+ steps a minute.
      */
-    private suspend fun activeMinutes(client: HealthConnectClient, got: Set<String>, start: Instant): Long {
-        val range = TimeRangeFilter.between(start, Instant.now())
+    private suspend fun activeMinutes(client: HealthConnectClient, got: Set<String>, start: Instant, end: Instant = Instant.now()): Long {
+        val range = TimeRangeFilter.between(start, end)
         val ex = if (got.contains(EXERCISE))
             client.readRecords(ReadRecordsRequest(recordType = ExerciseSessionRecord::class, timeRangeFilter = range, pageSize = 200)).records
                 .map { it.startTime.toEpochMilli() to it.endTime.toEpochMilli() }.sortedBy { it.first }
