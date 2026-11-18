@@ -433,7 +433,10 @@ final class Extras {
     }
 
     static RemoteViews steps(Context c, int wid) {
-        RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_steps);
+        // Tall widget: big rings in the middle with the numbers in a row under them; otherwise the rings sit beside the numbers.
+        int[] sz = Widgets.sizeDp(c, wid);
+        boolean tall = sz[1] >= 300 && sz[1] > sz[0] * 0.8f;
+        RemoteViews v = new RemoteViews(c.getPackageName(), tall ? R.layout.widget_steps_tall : R.layout.widget_steps);
         float k = Widgets.scale(c, wid);
         android.content.SharedPreferences p = WidgetData.prefs(c);
         long at = p.getLong("steps_at", 0);
@@ -473,18 +476,24 @@ final class Extras {
         v.setTextViewText(R.id.sp_day, sel.equals(today) ? "TODAY" : sel.equals(today.minusDays(1)) ? "YESTERDAY"
                 : sel.format(DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.US)).toUpperCase(Locale.US));
         v.setTextViewText(R.id.sp_steps, steps < 0 ? "–" : String.format(Locale.US, "%,d", steps));
-        v.setTextViewText(R.id.sp_steps_l, String.format(Locale.US, "/ %,d steps", goal(c)));
+        v.setTextViewText(R.id.sp_steps_l, String.format(Locale.US, tall ? "of %,d steps" : "/ %,d steps", goal(c)));
         v.setTextViewText(R.id.sp_active, min < 0 ? "–" : "≈ " + min);
-        v.setTextViewText(R.id.sp_active_l, "/ " + goalMin(c) + " min active");
+        v.setTextViewText(R.id.sp_active_l, (tall ? "of " : "/ ") + goalMin(c) + " min active");
         v.setTextViewText(R.id.sp_kcal, kcal < 0 ? "–" : String.format(Locale.US, "%,d", kcal));
-        v.setTextViewText(R.id.sp_kcal_l, String.format(Locale.US, "/ %,d active kcal", goalKcal(c)));
-        for (int id : new int[]{R.id.sp_steps, R.id.sp_active, R.id.sp_kcal}) Widgets.ts(v, id, 20, k);
-        for (int id : new int[]{R.id.sp_steps_l, R.id.sp_active_l, R.id.sp_kcal_l}) Widgets.ts(v, id, 11, k);
+        v.setTextViewText(R.id.sp_kcal_l, String.format(Locale.US, tall ? "of %,d active kcal" : "/ %,d active kcal", goalKcal(c)));
+        for (int id : new int[]{R.id.sp_steps, R.id.sp_active, R.id.sp_kcal}) Widgets.ts(v, id, tall ? 24 : 20, k);
+        for (int id : new int[]{R.id.sp_steps_l, R.id.sp_active_l, R.id.sp_kcal_l}) Widgets.ts(v, id, tall ? 10.5f : 11, k);
+        Widgets.ts(v, R.id.sp_day, tall ? 13 : 12, k);
+        // The small rings in the strip: as big as a seventh of the width allows.
+        float cellW = (sz[0] - 26 - 60) / 7f, mini = Math.max(30, Math.min(cellW - 6, tall ? 56 : 44));
         // The week strip: a small set of rings per day; tap one to show it big, ‹ › for the weeks before (30 days are kept).
         v.removeAllViews(R.id.sp_strip);
         LocalDate end = today.minusDays(7L * page);
         for (LocalDate d = end.minusDays(6); !d.isAfter(end); d = d.plusDays(1)) {
             RemoteViews cell = new RemoteViews(c.getPackageName(), R.layout.item_ring_day);
+            if (Build.VERSION.SDK_INT >= 31) sizeRings(cell, R.id.rd_rings, R.id.rd_2, R.id.rd_3, mini, 36, 5, 10);
+            Widgets.ts(cell, R.id.rd_lab, 10, k);
+            Widgets.ts(cell, R.id.rd_num, 11, k);
             long[] dv = dayVals(p, byDay, imp, d, d.equals(today));
             rings(c, cell, R.id.rd_1, R.id.rd_2, R.id.rd_3, dv[0], dv[1], dv[2]);
             cell.setTextViewText(R.id.rd_lab, d.equals(today) ? "TODAY" : d.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.US).toUpperCase(Locale.US));
@@ -513,6 +522,24 @@ final class Extras {
             nt = "Health Connect only has today's steps from " + Instant.ofEpochMilli(firstEntry).atZone(zz).format(DateTimeFormatter.ofPattern("h:mm a", Locale.US))
                     + " on, so today is short of Samsung Health's count.";
         note(v, R.id.sp_note, nt);
+        // The big rings fill what's left: the width (tall) or half of it (beside the numbers), and the height after everything else.
+        if (Build.VERSION.SDK_INT >= 31) {
+            float rest = (nt.isEmpty() ? 0 : 64) + (mini + 40) + 40 * k;   // note, strip, header and padding
+            float big = tall ? Math.min(sz[0] - 40, sz[1] - rest - (24 + 62) * k) : Math.min(sz[0] * 0.48f, sz[1] - rest - 12);
+            sizeRings(v, R.id.sp_rings, R.id.sp_r2, R.id.sp_r3, Math.max(96, Math.min(big, 340)), 128, 15, 30);
+        }
         return v;
+    }
+
+    /** Sets a set of rings to a size; the middle and inner rings' insets grow with it (the drawables are drawn for `base` dp). */
+    @androidx.annotation.RequiresApi(31)
+    private static void sizeRings(RemoteViews v, int frame, int mid, int in, float size, float base, float midInset, float inInset) {
+        v.setViewLayoutWidth(frame, size, TypedValue.COMPLEX_UNIT_DIP);
+        v.setViewLayoutHeight(frame, size, TypedValue.COMPLEX_UNIT_DIP);
+        float a = size * midInset / base, b = size * inInset / base;
+        for (int t : new int[]{RemoteViews.MARGIN_LEFT, RemoteViews.MARGIN_TOP, RemoteViews.MARGIN_RIGHT, RemoteViews.MARGIN_BOTTOM}) {
+            v.setViewLayoutMargin(mid, t, a, TypedValue.COMPLEX_UNIT_DIP);
+            v.setViewLayoutMargin(in, t, b, TypedValue.COMPLEX_UNIT_DIP);
+        }
     }
 }
