@@ -23,7 +23,7 @@ import android.widget.TextView;
  *    until the sheet's queue is empty and it has written fresh data for the widgets, then closes.
  */
 public class SyncActivity extends Activity {
-    private static final long TIMEOUT = 100_000;
+    private long timeout = 100_000;
     private final Handler h = new Handler(Looper.getMainLooper());
     private boolean started, finished;
     private long start;
@@ -55,8 +55,12 @@ public class SyncActivity extends Activity {
         Context app = getApplicationContext();
         WidgetData.prefs(app).edit().putLong("syncing_at", start).apply();
         Widgets.updateAll(app);
-        status.setText("Sending what's waiting…");
+        // The Inbox widget's Update: ask the Tracker to run its Inbox check (it can take a couple of minutes).
+        final boolean check = "inbox".equals(getIntent().getStringExtra("check"));
+        if (check) timeout = 240_000;
+        status.setText(check ? "Asking the Tracker to check your email and texts…" : "Sending what's waiting…");
         new Thread(() -> {
+            if (check && WidgetData.canSend(app)) try { Phone.send(app, new org.json.JSONObject().put("op", "check").put("what", "inbox")); } catch (Exception ignored) {}
             try { if (StepsHC.granted(app)) StepsHC.refresh(app); } catch (Throwable ignored) {}
             String err;
             try {
@@ -80,7 +84,8 @@ public class SyncActivity extends Activity {
 
     private void openTracker(int waiting) {
         if (!TrackerWeb.signedIn()) { needSignIn(); return; }
-        status.setText(waiting > 0 ? "Opening the Tracker to add " + waiting + " waiting…" : "Getting the Tracker's latest…");
+        status.setText(timeout > 100_000 ? "Opening the Tracker to check your email and texts…"
+                : waiting > 0 ? "Opening the Tracker to add " + waiting + " waiting…" : "Getting the Tracker's latest…");
         web = TrackerWeb.make(this);
         web.setAlpha(0.01f);
         web.setWebViewClient(new WebViewClient() {
@@ -122,7 +127,7 @@ public class SyncActivity extends Activity {
                 h.post(() -> {
                     if (finished) return;
                     if (ok) done("Synced ✓  The Tracker has everything.", 1500);
-                    else if (took > TIMEOUT) done("The Tracker didn't finish in time. It'll catch up the next time it's open.", 4000);
+                    else if (took > timeout) done("The Tracker didn't finish in time. It'll catch up the next time it's open.", 4000);
                     else {
                         status.setText(n > 0 ? "Tracker open · " + n + " waiting…" : "Tracker open · saving for the widgets…");
                         Widgets.updateAll(app);

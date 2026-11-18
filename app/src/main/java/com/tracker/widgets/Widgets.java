@@ -425,6 +425,11 @@ final class Widgets {
         ts(v, R.id.btn_quick, 12, k);
         list(c, v, wid, R.id.inbox_list, R.id.inbox_empty, "inbox");
         v.setOnClickPendingIntent(R.id.btn_quick, entry(c, "quick", null, false));
+        // Update: the Tracker checks your email and texts now (it opens out of sight, like Sync).
+        Intent chk = new Intent(c, SyncActivity.class).putExtra("check", "inbox").setData(Uri.parse("tracker://check/inbox"))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        v.setOnClickPendingIntent(R.id.btn_check, PendingIntent.getActivity(c, 7778, chk, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE));
+        ts(v, R.id.btn_check, 12, k);
         return v;
     }
 

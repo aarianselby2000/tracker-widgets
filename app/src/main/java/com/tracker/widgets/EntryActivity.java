@@ -136,50 +136,31 @@ public class EntryActivity extends Activity {
         });
     }
 
-    // ---------- Schedule: Done studying (the same two questions as the Tracker's form) ----------
+    // ---------- Schedule: studying (what you're working on, and the times when you stop) ----------
 
     private String studyKind = "hw";
     private int studyFocus = 4;
-
-    private void studyDone() {
-        header("DONE STUDYING", R.drawable.ic_schedule);
-        hint("Stopped now. The Tracker saves the session the next time it's open.");
-        label("WHAT WAS IT");
-        Flow kinds = new Flow(this);
-        box.addView(kinds, full());
-        label("HOW LOCKED IN WERE YOU");
-        Flow focus = new Flow(this);
-        box.addView(focus, full());
-        String[][] ks = {{"hw", "Homework"}, {"study", "Studying"}, {"both", "Both"}};
-        String[] fl = {"1 Not really", "2 Distracted", "3 On and off", "4 Focused", "5 Locked in"};
-        Runnable[] draw = new Runnable[1];
-        draw[0] = () -> {
-            kinds.removeAllViews();
-            for (String[] x : ks) { TextView t = chip(x[1], x[0].equals(studyKind)); t.setOnClickListener(v -> { studyKind = x[0]; draw[0].run(); }); kinds.addView(t); }
-            focus.removeAllViews();
-            for (int i = 0; i < fl.length; i++) { final int f = i + 1; TextView t = chip(fl[i], f == studyFocus); t.setOnClickListener(v -> { studyFocus = f; draw[0].run(); }); focus.addView(t); }
-        };
-        draw[0].run();
-        primary("Done studying", () -> send(new JSONObject().put("op", "study").put("do", "stop").put("kind", studyKind).put("focus", studyFocus), "Stopped. The Tracker logs it when it next opens."));
-    }
-
-    // ---------- Schedule: Start studying (which class, and what you're working on) ----------
-
+    private final List<String[]> parts = new ArrayList<>();   // [class, working on] already picked ("Add another")
     private String stCls = "", stWhat = "";
+    private final String[] times = new String[2];               // "HH:MM" started, stopped
 
-    /** The class (from School) and what you're working on: an open assignment for that class, or typed. Both are optional. */
-    private void studyStart() {
-        header("START STUDYING", R.drawable.ic_schedule);
+    /**
+     * What you're working on: what's already picked (tap to remove), class chips from School, that class's open assignments,
+     * a box to type it, and "＋ Add another" for when one session covers more than one class or assignment.
+     */
+    private EditText pairPicker() {
         JSONObject w = WidgetData.w(this);
         JSONArray a = w.optJSONArray("a");   // School's open items: [id, name, class, due, "e"|"h", status]
         List<String> classes = new ArrayList<>();
         JSONArray cl = w.optJSONArray("cl");   // all of School's classes (Tracker v79+)
-        for (int i = 0; cl != null && i < cl.length(); i++) { String s = cl.optString(i).trim(); if (!s.isEmpty() && !classes.contains(s)) classes.add(s); }
+        for (int i = 0; cl != null && i < cl.length(); i++) { String x = cl.optString(i).trim(); if (!x.isEmpty() && !classes.contains(x)) classes.add(x); }
         for (int i = 0; a != null && i < a.length(); i++) {
             JSONArray r = a.optJSONArray(i);
-            String s = r == null ? "" : r.optString(2).trim();
-            if (!s.isEmpty() && !classes.contains(s)) classes.add(s);
+            String x = r == null ? "" : r.optString(2).trim();
+            if (!x.isEmpty() && !classes.contains(x)) classes.add(x);
         }
+        Flow added = new Flow(this);
+        box.addView(added, full());
         label("CLASS");
         Flow cf = new Flow(this);
         box.addView(cf, full());
@@ -187,13 +168,22 @@ public class EntryActivity extends Activity {
         Flow af = new Flow(this);
         box.addView(af, full());
         EditText other = field("Or type it, e.g. chapter 5 reading", false);
-        hint("Starts now. The Tracker saves it the next time it's open (or on ⟳ Sync).");
+        TextView more = chip("＋ Add another class or assignment", false);
+        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        lp.topMargin = dp(10);
+        box.addView(more, lp);
         Runnable[] draw = new Runnable[1];
         draw[0] = () -> {
+            added.removeAllViews();
+            for (String[] p : parts) {
+                TextView t = chip((p[0].isEmpty() ? "" : p[0]) + (p[0].isEmpty() || p[1].isEmpty() ? "" : " · ") + p[1] + "   ✕", true);
+                t.setOnClickListener(v -> { parts.remove(p); draw[0].run(); });
+                added.addView(t);
+            }
             cf.removeAllViews();
-            for (String s : classes) {
-                TextView t = chip(s, s.equals(stCls));
-                t.setOnClickListener(v -> { stCls = s.equals(stCls) ? "" : s; stWhat = ""; draw[0].run(); });
+            for (String x : classes) {
+                TextView t = chip(x, x.equals(stCls));
+                t.setOnClickListener(v -> { stCls = x.equals(stCls) ? "" : x; stWhat = ""; draw[0].run(); });
                 cf.addView(t);
             }
             if (classes.isEmpty()) cf.addView(chip("No classes in School yet", false));
@@ -211,11 +201,134 @@ public class EntryActivity extends Activity {
             }
             if (shown == 0) af.addView(chip(stCls.isEmpty() ? "Nothing open in School" : "Nothing open for this class", false));
         };
+        more.setOnClickListener(v -> {
+            String[] cur = current(other);
+            if (cur[0].isEmpty() && cur[1].isEmpty()) { other.setError("Pick a class or assignment (or type one) first"); return; }
+            if (parts.size() >= 6) return;
+            parts.add(cur);
+            stCls = "";
+            stWhat = "";
+            other.setText("");
+            draw[0].run();
+            Toast.makeText(this, "Added. Pick the next one.", Toast.LENGTH_SHORT).show();
+        });
         draw[0].run();
+        return other;
+    }
+
+    private String[] current(EditText other) {
+        String typed = other.getText().toString().trim();
+        return new String[]{stCls, typed.isEmpty() ? stWhat : typed};
+    }
+
+    /** Everything picked: the ones added, plus what's selected now. */
+    private List<String[]> allParts(EditText other) {
+        List<String[]> out = new ArrayList<>(parts);
+        String[] cur = current(other);
+        if (!cur[0].isEmpty() || !cur[1].isEmpty()) out.add(cur);
+        return out;
+    }
+
+    /** The first pair is the session's class / working on; the rest go in "more". */
+    private void putParts(JSONObject e, List<String[]> ps) throws Exception {
+        JSONArray m = new JSONArray();
+        for (int i = 1; i < ps.size(); i++) m.put(new JSONObject().put("cls", cut(ps.get(i)[0], 60)).put("what", cut(ps.get(i)[1], 100)));
+        e.put("cls", ps.isEmpty() ? "" : cut(ps.get(0)[0], 60)).put("what", ps.isEmpty() ? "" : cut(ps.get(0)[1], 100)).put("more", m);
+    }
+
+    private void studyStart() {
+        header("START STUDYING", R.drawable.ic_schedule);
+        hint("What are you working on? Pick the class and assignment, or type it. Working on more than one? Add another.");
+        EditText other = pairPicker();
+        hint("Starts now. The Tracker saves it the next time it's open (or on ⟳ Sync).");
         primary("Start studying", () -> {
-            String typed = other.getText().toString().trim(), what = typed.isEmpty() ? stWhat : typed;
-            send(new JSONObject().put("op", "study").put("do", "start").put("cls", cut(stCls, 60)).put("what", cut(what, 100)),
-                    "Timer started" + (stCls.isEmpty() ? "" : " for " + stCls) + ".");
+            List<String[]> ps = allParts(other);
+            JSONObject e = new JSONObject().put("op", "study").put("do", "start");
+            putParts(e, ps);
+            send(e, "Timer started" + (ps.isEmpty() || ps.get(0)[0].isEmpty() ? "" : " for " + ps.get(0)[0]) + ".");
+        });
+    }
+
+    private static String hhmm(int min) { min = ((min % 1440) + 1440) % 1440; return String.format(java.util.Locale.US, "%02d:%02d", min / 60, min % 60); }
+    private static int mins(String hm) { String[] q = hm.split(":"); return Integer.parseInt(q[0]) * 60 + Integer.parseInt(q[1]); }
+    private static String clock12(String hm) { int m = mins(hm), h = m / 60 % 12; return (h == 0 ? 12 : h) + ":" + String.format(java.util.Locale.US, "%02d", m % 60) + (m >= 720 ? " PM" : " AM"); }
+
+    private void studyDone() {
+        header("DONE STUDYING", R.drawable.ic_schedule);
+        // When it started (the Tracker's, or a start sent from this phone it hasn't saved yet) and what it was for; stopped: now.
+        JSONObject s = WidgetData.w(this).optJSONObject("s"), st = s != null ? s.optJSONObject("st") : null;
+        String start = st != null ? st.optString("start") : "";
+        JSONArray sp = st != null ? st.optJSONArray("parts") : null;
+        parts.clear();
+        for (int i = 0; sp != null && i < sp.length(); i++) { JSONObject p = sp.optJSONObject(i); if (p != null) parts.add(new String[]{p.optString("cls"), p.optString("what")}); }
+        for (JSONObject e : Phone.pendingOf(this, "study")) {
+            if (!"start".equals(e.optString("do"))) continue;
+            start = e.optString("hm", start);
+            parts.clear();
+            if (!e.optString("cls").isEmpty() || !e.optString("what").isEmpty()) parts.add(new String[]{e.optString("cls"), e.optString("what")});
+            JSONArray m = e.optJSONArray("more");
+            for (int i = 0; m != null && i < m.length(); i++) { JSONObject p = m.optJSONObject(i); if (p != null) parts.add(new String[]{p.optString("cls"), p.optString("what")}); }
+        }
+        java.time.LocalTime now = java.time.LocalTime.now();
+        int nowMin = now.getHour() * 60 + now.getMinute();
+        times[0] = start.matches("\\d{1,2}:\\d{2}") ? hhmm(mins(start)) : hhmm(nowMin - 60);
+        times[1] = hhmm(nowMin);
+        label("WHEN · TAP A TIME TO CHANGE IT");
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        box.addView(row, full());
+        TextView sb = chip("", true), eb = chip("", true);
+        TextView len = new TextView(this);
+        len.setTextColor(MUTED);
+        len.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        LinearLayout.LayoutParams gap = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        gap.leftMargin = dp(8);
+        row.addView(sb);
+        row.addView(eb, gap);
+        LinearLayout.LayoutParams gl = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        gl.leftMargin = dp(10);
+        gl.gravity = Gravity.CENTER_VERTICAL;
+        row.addView(len, gl);
+        Runnable show = () -> {
+            sb.setText("Started " + clock12(times[0]));
+            eb.setText("Stopped " + clock12(times[1]));
+            int d = ((mins(times[1]) - mins(times[0])) % 1440 + 1440) % 1440;
+            len.setText(d / 60 > 0 ? (d / 60) + "h " + (d % 60) + "m" : (d % 60) + " min");
+        };
+        show.run();
+        for (int k = 0; k < 2; k++) {
+            final int which = k;
+            (k == 0 ? sb : eb).setOnClickListener(v -> {
+                int m = mins(times[which]);
+                new android.app.TimePickerDialog(this, (tp, h, mi) -> { times[which] = hhmm(h * 60 + mi); show.run(); }, m / 60, m % 60, false).show();
+            });
+        }
+        label("WORKED ON");
+        EditText other = pairPicker();
+        label("WHAT WAS IT");
+        Flow kinds = new Flow(this);
+        box.addView(kinds, full());
+        label("HOW LOCKED IN WERE YOU");
+        Flow focus = new Flow(this);
+        box.addView(focus, full());
+        String[][] ks = {{"hw", "Homework"}, {"study", "Studying"}, {"both", "Both"}};
+        String[] fl = {"1 Not really", "2 Distracted", "3 On and off", "4 Focused", "5 Locked in"};
+        Runnable[] draw = new Runnable[1];
+        draw[0] = () -> {
+            kinds.removeAllViews();
+            for (String[] x : ks) { TextView t = chip(x[1], x[0].equals(studyKind)); t.setOnClickListener(v -> { studyKind = x[0]; draw[0].run(); }); kinds.addView(t); }
+            focus.removeAllViews();
+            for (int i = 0; i < fl.length; i++) { final int f = i + 1; TextView t = chip(fl[i], f == studyFocus); t.setOnClickListener(v -> { studyFocus = f; draw[0].run(); }); focus.addView(t); }
+        };
+        draw[0].run();
+        hint("The Tracker saves the session with these times the next time it's open (or on ⟳ Sync).");
+        primary("Done studying", () -> {
+            int d = ((mins(times[1]) - mins(times[0])) % 1440 + 1440) % 1440;
+            if (d < 5) { Toast.makeText(this, "That's under 5 minutes. Check the times.", Toast.LENGTH_LONG).show(); return; }
+            JSONObject e = new JSONObject().put("op", "study").put("do", "stop").put("kind", studyKind).put("focus", studyFocus)
+                    .put("start", times[0]).put("end", times[1]);
+            putParts(e, allParts(other));
+            send(e, "Stopped: " + (d / 60 > 0 ? (d / 60) + "h " : "") + (d % 60) + "m. The Tracker logs it when it next opens.");
         });
     }
 
