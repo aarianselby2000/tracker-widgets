@@ -13,6 +13,7 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.Switch;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.Map;
 
@@ -54,21 +55,28 @@ public class MainActivity extends Activity {
         findViewById(R.id.perm_steps_b).setOnClickListener(v -> connectSteps());
     }
 
-    /** Ask Health Connect for steps; if its screen doesn't come up, open its settings page for this app instead. */
+    /** Ask Health Connect for steps; if it isn't on the phone, get it from the Play Store; if its screen doesn't come up, open its settings. */
     private void connectSteps() {
         TextView t = findViewById(R.id.perm_steps_t);
         int st;
-        try { st = StepsHC.status(this); } catch (Throwable e) { t.setText("Health Connect isn't available on this phone."); return; }
-        if (st == androidx.health.connect.client.HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
-            t.setText("Health Connect needs installing or updating first. Opening the Play Store…");
-            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata&url=healthconnect%3A%2F%2Fonboarding"))); } catch (Exception ignored) {}
+        try { st = StepsHC.status(this); } catch (Throwable e) { st = -1; }
+        if (st != androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE) {
+            // Android 13 and older: Health Connect is an app from the Play Store (Android 14+ has it built in).
+            t.setText("Health Connect isn't on this phone yet (Android " + android.os.Build.VERSION.RELEASE + "). Install it from the Play Store, then in Samsung Health: "
+                    + "⋮ → Settings → Health Connect → allow it to share Steps. Then tap Connect here again.");
+            openPlayStore("com.google.android.apps.healthdata");
             return;
         }
-        if (st != androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE) { t.setText("Health Connect isn't available on this phone."); return; }
         if (StepsHC.granted(this)) { askBackground(); return; }
         t.setText("Opening Health Connect…");
         try { startActivityForResult(StepsHC.permissionIntent(this), 13); }
         catch (Throwable e) { openStepsSettings(); }
+    }
+
+    private void openPlayStore(String pkg) {
+        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=" + pkg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); return; } catch (Throwable ignored) {}
+        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=" + pkg)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); }
+        catch (Throwable e) { Toast.makeText(this, "Search the Play Store for Health Connect.", Toast.LENGTH_LONG).show(); }
     }
 
     private void askBackground() {
@@ -127,11 +135,14 @@ public class MainActivity extends Activity {
             int st = StepsHC.status(this);
             hc = StepsHC.granted(this);
             hs = hc ? "✓ Connected to Health Connect" : st == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
-                    ? "Connect, then turn on Steps (and reading in the background)" : "Install or update Health Connect first";
+                    ? "Tap Connect and allow Steps (Samsung Health needs to share Steps with Health Connect too)"
+                    : "Needs the Health Connect app from the Play Store (Android " + android.os.Build.VERSION.RELEASE + "): tap Get it";
         } catch (Throwable t) { hs = "Health Connect isn't available here"; }
         String err = WidgetData.prefs(this).getString("steps_err", "");
         ((TextView) findViewById(R.id.perm_steps_t)).setText(hs + (hc && !err.isEmpty() ? '\n' + err : ""));
-        ((TextView) findViewById(R.id.perm_steps_b)).setText(hc ? "✓" : "Connect");
+        boolean avail = false;
+        try { avail = StepsHC.available(this); } catch (Throwable ignored) {}
+        ((TextView) findViewById(R.id.perm_steps_b)).setText(hc ? "✓" : avail ? "Connect" : "Get it");
     }
 
     @Override
