@@ -68,7 +68,14 @@ final class Widgets {
         }
         for (int id : m.getAppWidgetIds(new ComponentName(c, WeatherWidget.class))) m.updateAppWidget(id, Extras.weather(c, id));
         for (int id : m.getAppWidgetIds(new ComponentName(c, ScreenTimeWidget.class))) m.updateAppWidget(id, Extras.screen(c, id));
-        for (int id : m.getAppWidgetIds(new ComponentName(c, CalendarWidget.class))) m.updateAppWidget(id, Extras.calendar(c, id));
+        for (int id : m.getAppWidgetIds(new ComponentName(c, CalendarWidget.class))) {
+            m.updateAppWidget(id, Extras.calendar(c, id));
+            String cs = Integer.toHexString((WidgetData.prefs(c).getString("cal_rows_" + id, "") + "|" + scale(c, id)).hashCode()), ck = "cal_sig_" + id;
+            if (!cs.equals(WidgetData.prefs(c).getString(ck, ""))) {   // reload the list only when it changed (keeps your scroll place)
+                WidgetData.prefs(c).edit().putString(ck, cs).apply();
+                m.notifyAppWidgetViewDataChanged(id, R.id.cal_list);
+            }
+        }
         for (int id : m.getAppWidgetIds(new ComponentName(c, StepsWidget.class))) m.updateAppWidget(id, Extras.steps(c, id));
         for (int id : m.getAppWidgetIds(new ComponentName(c, InboxWidget.class))) {
             m.updateAppWidget(id, inbox(c, d, id));
@@ -328,7 +335,7 @@ final class Widgets {
         v.setTextViewText(R.id.st_text_sub, hm(st != null ? st.optInt("week") : 0) + " this week");
         v.setTextViewText(R.id.btn_study, studying ? "■  Stop studying" : "▶  Start studying");
         if (studying) v.setOnClickPendingIntent(R.id.btn_study, entry(c, "study", null, false));
-        else v.setOnClickPendingIntent(R.id.btn_study, act(c, "study", "do", "start"));
+        else v.setOnClickPendingIntent(R.id.btn_study, entry(c, "studystart", null, false));   // pick the class and assignment first
         for (int id : new int[]{R.id.sl_text, R.id.st_text}) ts(v, id, 12, k);
         for (int id : new int[]{R.id.sl_text_sub, R.id.st_text_sub}) ts(v, id, 10.5f, k);
         for (int id : new int[]{R.id.btn_sleep, R.id.btn_study}) ts(v, id, 13, k);

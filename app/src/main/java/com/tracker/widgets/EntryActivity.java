@@ -82,7 +82,7 @@ public class EntryActivity extends Activity {
         super.onCreate(b);
         mode = getIntent().getStringExtra("mode");
         if (mode == null) mode = "food";
-        accent = mode.equals("money") ? MONEY : mode.equals("quick") ? INBOX : mode.equals("study") ? 0xFF3EC2AC : HEALTH;
+        accent = mode.equals("money") ? MONEY : mode.equals("quick") ? INBOX : mode.startsWith("study") ? 0xFF3EC2AC : HEALTH;
         cond = Typeface.create("sans-serif-condensed", Typeface.BOLD);
         ScrollView scroll = new ScrollView(this);
         box = new LinearLayout(this);
@@ -107,6 +107,7 @@ public class EntryActivity extends Activity {
         if (mode.equals("money")) money(getIntent().getStringExtra("dir"));
         else if (mode.equals("quick")) quick();
         else if (mode.equals("study")) studyDone();
+        else if (mode.equals("studystart")) studyStart();
         else food();
         if (b == null && getIntent().getBooleanExtra("camera", false)) takePhoto();
         else if (photoB64 != null) showPhoto(null);
@@ -160,6 +161,62 @@ public class EntryActivity extends Activity {
         };
         draw[0].run();
         primary("Done studying", () -> send(new JSONObject().put("op", "study").put("do", "stop").put("kind", studyKind).put("focus", studyFocus), "Stopped. The Tracker logs it when it next opens."));
+    }
+
+    // ---------- Schedule: Start studying (which class, and what you're working on) ----------
+
+    private String stCls = "", stWhat = "";
+
+    /** The class (from School) and what you're working on: an open assignment for that class, or typed. Both are optional. */
+    private void studyStart() {
+        header("START STUDYING", R.drawable.ic_schedule);
+        JSONObject w = WidgetData.w(this);
+        JSONArray a = w.optJSONArray("a");   // School's open items: [id, name, class, due, "e"|"h", status]
+        List<String> classes = new ArrayList<>();
+        JSONArray cl = w.optJSONArray("cl");   // all of School's classes (Tracker v79+)
+        for (int i = 0; cl != null && i < cl.length(); i++) { String s = cl.optString(i).trim(); if (!s.isEmpty() && !classes.contains(s)) classes.add(s); }
+        for (int i = 0; a != null && i < a.length(); i++) {
+            JSONArray r = a.optJSONArray(i);
+            String s = r == null ? "" : r.optString(2).trim();
+            if (!s.isEmpty() && !classes.contains(s)) classes.add(s);
+        }
+        label("CLASS");
+        Flow cf = new Flow(this);
+        box.addView(cf, full());
+        label("WORKING ON");
+        Flow af = new Flow(this);
+        box.addView(af, full());
+        EditText other = field("Or type it, e.g. chapter 5 reading", false);
+        hint("Starts now. The Tracker saves it the next time it's open (or on ⟳ Sync).");
+        Runnable[] draw = new Runnable[1];
+        draw[0] = () -> {
+            cf.removeAllViews();
+            for (String s : classes) {
+                TextView t = chip(s, s.equals(stCls));
+                t.setOnClickListener(v -> { stCls = s.equals(stCls) ? "" : s; stWhat = ""; draw[0].run(); });
+                cf.addView(t);
+            }
+            if (classes.isEmpty()) cf.addView(chip("No classes in School yet", false));
+            af.removeAllViews();
+            int shown = 0;
+            for (int i = 0; a != null && i < a.length(); i++) {
+                JSONArray r = a.optJSONArray(i);
+                if (r == null) continue;
+                String name = r.optString(1), cls = r.optString(2);
+                if (!stCls.isEmpty() && !stCls.equals(cls)) continue;
+                TextView t = chip(("e".equals(r.optString(4)) ? "Exam: " : "") + name, name.equals(stWhat));
+                t.setOnClickListener(v -> { stWhat = name.equals(stWhat) ? "" : name; if (stCls.isEmpty()) stCls = cls; draw[0].run(); });
+                af.addView(t);
+                shown++;
+            }
+            if (shown == 0) af.addView(chip(stCls.isEmpty() ? "Nothing open in School" : "Nothing open for this class", false));
+        };
+        draw[0].run();
+        primary("Start studying", () -> {
+            String typed = other.getText().toString().trim(), what = typed.isEmpty() ? stWhat : typed;
+            send(new JSONObject().put("op", "study").put("do", "start").put("cls", cut(stCls, 60)).put("what", cut(what, 100)),
+                    "Timer started" + (stCls.isEmpty() ? "" : " for " + stCls) + ".");
+        });
     }
 
     // ---------- Inbox: Quick add ----------

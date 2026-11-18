@@ -357,9 +357,8 @@ final class Extras {
             }
             v.addView(R.id.cal_grid, row);
         }
-        v.removeAllViews(R.id.cal_list);
+        JSONArray items = new JSONArray();   // the list's rows (Pages.row format), drawn by ListService kind "cal"
         int[] sz = Widgets.sizeDp(c, wid);
-        int fit = (int) Math.max(1, (sz[1] - (26 + 26 + 18 + weeks * 30 + 30) * k - 26) / (46 * k));
         int shown = 0, more = 0;
         if (sel != null) {
             // the chosen day: everything on it, morning to night
@@ -370,7 +369,6 @@ final class Extras {
                 String[] in = info.get(i);
                 LocalDate d0 = LocalDate.parse(in[2]), d1 = LocalDate.parse(in[3]);
                 if (sel.isBefore(d0) || !sel.isBefore(d1)) continue;
-                if (shown >= fit) { more++; continue; }
                 String when;
                 if (t[2] == 1) when = "all day";
                 else {
@@ -379,17 +377,17 @@ final class Extras {
                             + (en.toLocalDate().equals(sel) ? Widgets.clock(en.getHour() * 60 + en.getMinute()) : "…");
                 }
                 String col = String.format("#%06X", 0xFFFFFF & (int) t[3]);
-                v.addView(R.id.cal_list, Pages.row(c, new JSONArray().put("row").put(in[0]).put(when).put(in[1]).put(col).put(""), k));
+                items.put(new JSONArray().put("row").put(in[0]).put(when).put(in[1]).put(col).put(""));
                 shown++;
             }
-            if (ok && shown == 0) v.addView(R.id.cal_list, Pages.note(c, "Nothing on this day.", k));
-            if (more > 0) v.addView(R.id.cal_list, Pages.note(c, "+" + more + " more", k));
+            if (ok && shown == 0) items.put(new JSONArray().put("note").put("Nothing on this day."));
+            calList(c, v, wid, items);
             return v;
         }
-        // coming up: from now, as many as fit
+        // coming up: from now, all of it (the list scrolls)
         v.setTextViewText(R.id.cal_list_h, "COMING UP  ·  TAP A DAY");
         long now = System.currentTimeMillis();
-        for (int i = 0; i < times.size() && shown < fit; i++) {
+        for (int i = 0; i < times.size(); i++) {
             long[] t = times.get(i);
             if (t[1] < now) continue;
             String[] in = info.get(i);
@@ -399,11 +397,18 @@ final class Extras {
             LocalDateTime st = Instant.ofEpochMilli(t[0]).atZone(z).toLocalDateTime();
             String when = t[2] == 1 ? "all day" : Widgets.clock(st.getHour() * 60 + st.getMinute());
             String col = String.format("#%06X", 0xFFFFFF & (int) t[3]);
-            v.addView(R.id.cal_list, Pages.row(c, new JSONArray().put("row").put(in[0]).put(when).put(dayLabel + (in[1].isEmpty() ? "" : " · " + in[1])).put(col).put(""), k));
+            items.put(new JSONArray().put("row").put(in[0]).put(when).put(dayLabel + (in[1].isEmpty() ? "" : " · " + in[1])).put(col).put(""));
             shown++;
         }
-        if (ok && shown == 0) v.addView(R.id.cal_list, Pages.note(c, "Nothing in the next two weeks.", k));
+        if (ok && shown == 0) items.put(new JSONArray().put("note").put("Nothing in the next two weeks."));
+        calList(c, v, wid, items);
         return v;
+    }
+
+    /** The calendar's list scrolls (all of it, no "+N more"): its rows are kept for ListService kind "cal". */
+    private static void calList(Context c, RemoteViews v, int wid, JSONArray items) {
+        WidgetData.prefs(c).edit().putString("cal_rows_" + wid, items.toString()).apply();
+        Widgets.list(c, v, wid, R.id.cal_list, R.id.cal_empty, "cal");
     }
 
     // ================= Steps (Health Connect; Samsung Health or Google Fit can sync into it) =================
@@ -420,6 +425,27 @@ final class Extras {
         v.setProgressBar(r1, 100, pctOf(steps, goal(c)), false);
         v.setProgressBar(r2, 100, pctOf(min, goalMin(c)), false);
         v.setProgressBar(r3, 100, pctOf(kcal, goalKcal(c)), false);
+    }
+
+    /** The last n days as [date, steps, active minutes, active kcal] (Health Connect and the import combined), skipping days with nothing. */
+    static JSONArray activityDays(Context c, int n) {
+        android.content.SharedPreferences p = WidgetData.prefs(c);
+        Map<String, JSONArray> byDay = new HashMap<>();
+        JSONObject imp = null;
+        try {
+            JSONArray days = new JSONArray(p.getString("steps", "[]"));
+            for (int i = 0; i < days.length(); i++) byDay.put(days.getJSONArray(i).optString(0), days.getJSONArray(i));
+        } catch (Exception ignored) {}
+        try { String si = p.getString("steps_import", ""); if (!si.isEmpty()) imp = new JSONObject(si); } catch (Exception ignored) {}
+        JSONArray out = new JSONArray();
+        LocalDate today = LocalDate.now();
+        for (int i = n - 1; i >= 0; i--) {
+            LocalDate d = today.minusDays(i);
+            long[] v = dayVals(p, byDay, imp, d, i == 0);
+            if (v[0] < 0 && v[1] < 0 && v[2] < 0) continue;
+            out.put(new JSONArray().put(d.toString()).put(v[0]).put(v[1]).put(v[2]));
+        }
+        return out;
     }
 
     /** A day's steps, active minutes and active kcal: Health Connect's, or the Samsung Health import's where that's higher (-1 = none). */

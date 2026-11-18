@@ -167,7 +167,7 @@ final class Phone {
     /** "2 waiting for the Tracker" / "1 not sent yet" for the widget headers, or "". */
     static String waitingNote(Context c) {
         int unsent = unsent(c), pend = 0;
-        for (JSONObject e : pending(c)) if (!"text".equals(e.optString("op"))) pend++;
+        for (JSONObject e : pending(c)) if (!"text".equals(e.optString("op")) && !"activity".equals(e.optString("op"))) pend++;
         if (unsent > 0) return unsent + " not sent yet";
         if (pend > 0) return pend + " waiting for the Tracker";
         return "";

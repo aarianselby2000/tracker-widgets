@@ -74,6 +74,7 @@ final class SamsungImport {
         catch (Exception e) { return "Couldn't save the import."; }
         WidgetData.prefs(c).edit().putString("steps_import", out.toString()).putLong("steps_import_at", System.currentTimeMillis())
                 .putInt("steps_import_n", days.size()).apply();
+        ActivitySend.maybe(c, true);   // all 30 days on to the Tracker's Health section
         return "✓ Primed with " + days.size() + " days from Samsung Health" + (cAct == null ? " (steps and calories: this file has no active time)" : "") + ".";
     }
 

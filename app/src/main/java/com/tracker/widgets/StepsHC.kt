@@ -125,6 +125,7 @@ object StepsHC {
                     p.edit().putString("steps", out.toString()).putLong("steps_at", System.currentTimeMillis())
                         .putString("steps_src", sources.joinToString(" + ")).putLong("steps_active_min", activeMinutes(client, got, dayStart))
                         .putString("steps_diag", diag(client, got, dayStart, p)).apply()
+                    ActivitySend.maybe(c, false)   // on to the Tracker's Health section when it changed
                     null
                 }
             }

@@ -110,6 +110,12 @@ public class ListService extends RemoteViewsService {
                     rows.add(new JSONArray().put(x.optString(0)).put(x.optInt(1)).put("").put(x.optInt(2)).put(x.optInt(3)).put(x.optInt(4))
                             .put(x.optString(5)).put("").put("recent"));
                 }
+            } else if (kind.equals("cal")) {
+                // The Calendar widget's list, as Extras.calendar laid it out.
+                try {
+                    JSONArray a = new JSONArray(WidgetData.prefs(c).getString("cal_rows_" + wid, "[]"));
+                    for (int i = 0; i < a.length(); i++) if (a.optJSONArray(i) != null) rows.add(a.optJSONArray(i));
+                } catch (Exception ignored) {}
             } else if (kind.equals("steps")) {
                 // The Steps widget's past days, newest first (today is at the top of the widget, so it's left out).
                 try {
@@ -158,6 +164,7 @@ public class ListService extends RemoteViewsService {
             if (kind.equals("acct")) return account(r.optJSONObject(0), pos);
             if (kind.equals("foods")) return foodRow(r);
             if (kind.equals("steps")) return stepDay(r);
+            if (kind.equals("cal")) return Pages.row(c, r, k);
             if (kind.equals("health")) return healthPage(r.optString(0));
             if (kind.equals("days")) return dayPage(r.optJSONObject(0), pos, rows.size());
             return event(r);
