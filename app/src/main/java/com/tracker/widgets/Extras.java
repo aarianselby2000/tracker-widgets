@@ -422,6 +422,16 @@ final class Extras {
         v.setProgressBar(r3, 100, pctOf(kcal, goalKcal(c)), false);
     }
 
+    /** A day's steps, active minutes and active kcal: Health Connect's, or the Samsung Health import's where that's higher (-1 = none). */
+    private static long[] dayVals(android.content.SharedPreferences p, Map<String, JSONArray> byDay, JSONObject imp, LocalDate d, boolean today) {
+        JSONArray y = byDay.get(d.toString());
+        long s = y == null ? -1 : y.optLong(1, -1), k = y == null ? -1 : y.optLong(2, -1), m = y == null ? -1 : y.optLong(4, -1);
+        if (today && m < 0 && s >= 0) m = p.getLong("steps_active_min", -1);
+        JSONArray q = imp == null ? null : imp.optJSONArray(d.toString());
+        if (q != null) { s = Math.max(s, q.optLong(0, -1)); m = Math.max(m, q.optLong(1, -1)); k = Math.max(k, q.optLong(2, -1)); }
+        return new long[]{s, m, k};
+    }
+
     static RemoteViews steps(Context c, int wid) {
         RemoteViews v = new RemoteViews(c.getPackageName(), R.layout.widget_steps);
         float k = Widgets.scale(c, wid);
@@ -442,6 +452,11 @@ final class Extras {
                 if (x.optLong(1) > 0) none = false;
             }
         } catch (Exception ignored) {}
+        JSONObject imp = null;   // the Samsung Health import, {date: [steps, active minutes, kcal]}
+        try {
+            String si = p.getString("steps_import", "");
+            if (!si.isEmpty()) { imp = new JSONObject(si); if (imp.length() > 0) none = false; }
+        } catch (Exception ignored) {}
         LocalDate today = LocalDate.now(), first = today.minusDays(29);
         String w = String.valueOf(wid);
         // The day shown big (today unless you tapped another) and which week the strip shows; both go back to today on a new day.
@@ -452,9 +467,8 @@ final class Extras {
             page = Math.max(0, Math.min(4, p.getInt("steps_page_" + wid, 0)));
         }
         if (sel.isAfter(today) || sel.isBefore(first)) sel = today;
-        JSONArray x = byDay.get(sel.toString());
-        long steps = x == null ? -1 : x.optLong(1, -1), kcal = x == null ? -1 : x.optLong(2, -1), min = x == null ? -1 : x.optLong(4, -1);
-        if (sel.equals(today) && min < 0 && steps >= 0) min = p.getLong("steps_active_min", -1);
+        long[] sv = dayVals(p, byDay, imp, sel, sel.equals(today));
+        long steps = sv[0], min = sv[1], kcal = sv[2];
         rings(c, v, R.id.sp_r1, R.id.sp_r2, R.id.sp_r3, steps, min, kcal);
         v.setTextViewText(R.id.sp_day, sel.equals(today) ? "TODAY" : sel.equals(today.minusDays(1)) ? "YESTERDAY"
                 : sel.format(DateTimeFormatter.ofPattern("EEEE, MMM d", Locale.US)).toUpperCase(Locale.US));
@@ -471,10 +485,8 @@ final class Extras {
         LocalDate end = today.minusDays(7L * page);
         for (LocalDate d = end.minusDays(6); !d.isAfter(end); d = d.plusDays(1)) {
             RemoteViews cell = new RemoteViews(c.getPackageName(), R.layout.item_ring_day);
-            JSONArray y = byDay.get(d.toString());
-            long ds = y == null ? -1 : y.optLong(1, -1), dk = y == null ? -1 : y.optLong(2, -1), dm = y == null ? -1 : y.optLong(4, -1);
-            if (d.equals(today) && dm < 0 && ds >= 0) dm = p.getLong("steps_active_min", -1);
-            rings(c, cell, R.id.rd_1, R.id.rd_2, R.id.rd_3, ds, dm, dk);
+            long[] dv = dayVals(p, byDay, imp, d, d.equals(today));
+            rings(c, cell, R.id.rd_1, R.id.rd_2, R.id.rd_3, dv[0], dv[1], dv[2]);
             cell.setTextViewText(R.id.rd_lab, d.equals(today) ? "TODAY" : d.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.US).toUpperCase(Locale.US));
             cell.setTextViewText(R.id.rd_num, String.valueOf(d.getDayOfMonth()));
             boolean inRange = !d.isBefore(first);
@@ -489,7 +501,7 @@ final class Extras {
         if (page > 0) Pages.click(c, v, R.id.sp_next, "op", "steppage", "wid", w, "to", String.valueOf(page - 1));
         // A note when something's missing.
         String nt = err;
-        if (nt.isEmpty() && raw.isEmpty()) nt = "Open Tracker Widgets and tap Connect next to Steps (Health Connect), then ⟳ Sync.";
+        if (nt.isEmpty() && raw.isEmpty() && imp == null) nt = "Open Tracker Widgets and tap Connect next to Steps (Health Connect), then ⟳ Sync.";
         else if (nt.isEmpty() && none)
             nt = "Health Connect has no steps from Samsung Health yet. In Tracker Widgets, tap Check Samsung Health's access, allow Samsung Health to share "
                     + "Steps and Active calories, then open Samsung Health once so it sends them, and tap ⟳ Sync.";

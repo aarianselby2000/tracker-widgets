@@ -99,13 +99,22 @@ public class MainActivity extends Activity {
             openPlayStore(HC_PKG);
             return;
         }
-        if (StepsHC.grantedAll(this)) { askBackground(); return; }
+        if (StepsHC.grantedAll(this)) { pickImport(); return; }
         Intent ask;
         try { ask = StepsHC.permissionIntent(this); } catch (Throwable e) { openHealthConnect("Couldn't build Health Connect's request (" + e.getClass().getSimpleName() + ")"); return; }
         hcAsked = android.os.SystemClock.elapsedRealtime();
         Toast.makeText(this, "Opening Health Connect…", Toast.LENGTH_SHORT).show();
         try { startActivityForResult(ask, 13); }
         catch (Throwable e) { openHealthConnect("Health Connect's permission screen wouldn't open (" + e.getClass().getSimpleName() + ")"); }
+    }
+
+    /** Pick the Samsung Health export's day summary file (Samsung Health → Settings → Download personal data). */
+    private void pickImport() {
+        Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+        try {
+            startActivityForResult(i, 15);
+            Toast.makeText(this, "Pick the file that starts with com.samsung.shealth.activity.day_summary", Toast.LENGTH_LONG).show();
+        } catch (Throwable e) { stepsMsg("Couldn't open the file picker on this phone.", true); }
     }
 
     private void openPlayStore(String pkg) {
@@ -160,6 +169,14 @@ public class MainActivity extends Activity {
             else stepsMsg("Steps weren't allowed. Tap Connect to try again, or allow Steps for Tracker Widgets in Health Connect → App permissions.", false);
         }
         if (req == 14) afterExtras(false);
+        if (req == 15 && res == RESULT_OK && data != null && data.getData() != null) {
+            android.net.Uri uri = data.getData();
+            stepsMsg("Reading the Samsung Health export…", false);
+            new Thread(() -> {
+                String msg = SamsungImport.run(getApplicationContext(), uri);
+                new Handler(Looper.getMainLooper()).post(() -> { stepsMsg(msg, true); Widgets.updateAll(this); showExtras(); });
+            }).start();
+        }
     }
 
     /** Refresh the phone's widgets right away (steps read fine while this screen is open), then redraw. */
@@ -188,7 +205,10 @@ public class MainActivity extends Activity {
             int st = StepsHC.status(this);
             hc = StepsHC.granted(this);
             all = hc && StepsHC.grantedAll(this);
-            hs = all ? "✓ Connected to Health Connect" : hc ? "✓ Steps connected. Tap More to add calories and active time" : st == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
+            int primed = WidgetData.prefs(this).getInt("steps_import_n", 0);
+            hs = all ? (primed > 0 ? "✓ Connected · primed with " + primed + " past days from your Samsung Health export (tap ✓ to import a newer one)"
+                    : "✓ Connected. Tap Import to fill in past days: in Samsung Health, Settings → Download personal data, then pick the file that starts with "
+                    + "com.samsung.shealth.activity.day_summary") : hc ? "✓ Steps connected. Tap More to add calories and active time" : st == androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE
                     ? "Tap Connect and allow Steps (Samsung Health needs to share Steps with Health Connect too)"
                     : "Needs the Health Connect app from the Play Store (Android " + android.os.Build.VERSION.RELEASE + "): tap Get it";
         } catch (Throwable t) { hs = "Health Connect isn't available here"; }
@@ -204,7 +224,7 @@ public class MainActivity extends Activity {
         ((TextView) findViewById(R.id.perm_steps_t)).setText(hs);
         boolean avail = false;
         try { avail = StepsHC.available(this); } catch (Throwable ignored) {}
-        ((TextView) findViewById(R.id.perm_steps_b)).setText(all ? "✓" : hc ? "More" : avail ? "Connect" : "Get it");
+        ((TextView) findViewById(R.id.perm_steps_b)).setText(all ? (WidgetData.prefs(this).getInt("steps_import_n", 0) > 0 ? "✓" : "Import") : hc ? "More" : avail ? "Connect" : "Get it");
     }
 
     /** Health Connect's own screen, where Samsung Health's access (App permissions → Samsung Health) can be checked. */
