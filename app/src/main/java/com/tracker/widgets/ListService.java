@@ -105,6 +105,10 @@ public class ListService extends RemoteViewsService {
                 JSONObject m = w.optJSONObject("m");
                 JSONArray a = m != null ? m.optJSONArray("acc") : null;
                 for (int i = 0; a != null && i < a.length(); i++) if (a.optJSONObject(i) != null) rows.add(new JSONArray().put(a.optJSONObject(i)));
+                // A StackView only loops when it holds more than 5 cards; with 3 it runs out and swipes into an empty stack.
+                // Repeating Checking, Savings, Cash keeps it going round.
+                int n = rows.size();
+                for (int rep = 0; n > 0 && rows.size() < 9; rep++) for (int i = 0; i < n; i++) rows.add(rows.get(i));
             } else if (kind.equals("inbox")) {
                 JSONArray a = w.optJSONArray("i");
                 Set<String> done = Phone.pendingSugs(c);
@@ -275,9 +279,7 @@ public class ListService extends RemoteViewsService {
             Widgets.ts(v, R.id.acct_recent, 11.5f, this.k);
             Widgets.ts(v, R.id.acct_pill, 11, this.k);
             v.setTextColor(R.id.acct_name, color);
-            // Tap the front card to show its recent entries (tap again to hide them); the cards behind never show theirs.
-            boolean open = WidgetData.prefs(c).getInt("money_front_" + wid, -1) == pos;
-            v.setOnClickFillInIntent(R.id.acct_card, new Intent().putExtra("op", "acct").putExtra("wid", String.valueOf(wid)).putExtra("to", String.valueOf(open ? -1 : pos)));
+            v.setOnClickFillInIntent(R.id.acct_card, new Intent());
             // Entries added on the phone that the Tracker hasn't applied yet move the balance here too.
             android.text.SpannableStringBuilder rec = new android.text.SpannableStringBuilder();
             double pend = 0;
@@ -318,7 +320,7 @@ public class ListService extends RemoteViewsService {
                 JSONArray x = r.optJSONArray(i);
                 if (x != null) recLine(rec, x.optString(1), x.optDouble(2, 0), x.optString(3) + " · " + x.optString(0));
             }
-            v.setTextViewText(R.id.acct_recent, !open ? "Tap for recent entries" : rec.length() == 0 ? "No entries yet" : rec);
+            v.setTextViewText(R.id.acct_recent, rec.length() == 0 ? "No entries yet" : rec);
             String asOf = a.optString("asOf");
             v.setTextViewText(R.id.acct_asof, asOf.length() == 10 ? (k.equals("cash") ? "Counted " : "From your bank ") + Integer.parseInt(asOf.substring(5, 7)) + "/" + Integer.parseInt(asOf.substring(8)) + ", plus entries since" : "");
             return v;

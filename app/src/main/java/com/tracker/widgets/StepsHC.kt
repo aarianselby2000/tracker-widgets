@@ -121,16 +121,32 @@ object StepsHC {
     private fun who(pk: Collection<String>): String =
         if (pk.isEmpty()) "no app" else pk.toSet().joinToString(", ") { NAMES[it] ?: it }
 
-    /** What Health Connect holds for today, to show when the numbers look wrong. */
+    /**
+     * What Health Connect holds for today, per app, to show when the numbers look wrong: how many steps in how many entries,
+     * from when to when (Samsung Health may only share what it counted after it was connected), and how long entries are.
+     */
     private suspend fun diag(client: HealthConnectClient, got: Set<String>, start: Instant): String {
         val range = TimeRangeFilter.between(start, Instant.now())
+        val z = ZoneId.systemDefault()
+        val fmt = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US)
+        fun t(i: Instant): String = i.atZone(z).format(fmt)
+        val parts = mutableListOf<String>()
         val st = client.readRecords(ReadRecordsRequest(recordType = StepsRecord::class, timeRangeFilter = range, pageSize = 5000)).records
-        var s = "Today Health Connect has " + st.size + " step " + (if (st.size == 1) "entry" else "entries") + " (from " + who(st.map { it.metadata.dataOrigin.packageName }) + ")"
+        if (st.isEmpty()) parts.add("no step entries")
+        for ((pk, rs) in st.groupBy { it.metadata.dataOrigin.packageName }) {
+            val mins = rs.map { (it.endTime.toEpochMilli() - it.startTime.toEpochMilli()) / 60000 }.sorted()
+            parts.add((NAMES[pk] ?: pk) + ": " + String.format(java.util.Locale.US, "%,d", rs.sumOf { it.count }) + " steps in " + rs.size +
+                (if (rs.size == 1) " entry, " else " entries, ") + t(rs.minOf { it.startTime }) + "–" + t(rs.maxOf { it.endTime }) +
+                ", each about " + mins[mins.size / 2] + " min")
+        }
         if (got.contains(ACTIVE)) {
             val ac = client.readRecords(ReadRecordsRequest(recordType = ActiveCaloriesBurnedRecord::class, timeRangeFilter = range, pageSize = 2000)).records
-            s += " and " + ac.size + " active-calorie " + (if (ac.size == 1) "entry" else "entries") + " (from " + who(ac.map { it.metadata.dataOrigin.packageName }) + ")"
+            if (ac.isEmpty()) parts.add("no active-calorie entries")
+            for ((pk, rs) in ac.groupBy { it.metadata.dataOrigin.packageName })
+                parts.add((NAMES[pk] ?: pk) + " active calories: " + Math.round(rs.sumOf { it.energy.inKilocalories }) + " kcal, " +
+                    t(rs.minOf { it.startTime }) + "–" + t(rs.maxOf { it.endTime }))
         }
-        return "$s."
+        return "Today in Health Connect · " + parts.joinToString(" · ")
     }
 
     /**
