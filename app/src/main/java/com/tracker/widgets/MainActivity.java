@@ -51,14 +51,40 @@ public class MainActivity extends Activity {
         findViewById(R.id.perm_weather_b).setOnClickListener(v -> requestPermissions(new String[]{android.Manifest.permission.ACCESS_COARSE_LOCATION}, 11));
         findViewById(R.id.perm_calendar_b).setOnClickListener(v -> requestPermissions(new String[]{android.Manifest.permission.READ_CALENDAR}, 12));
         findViewById(R.id.perm_screen_b).setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)));
-        findViewById(R.id.perm_steps_b).setOnClickListener(v -> {
-            try {
-                if (StepsHC.available(this)) startActivityForResult(StepsHC.permissionIntent(this), 13);
-                else startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata")));
-            } catch (Throwable t) {
-                ((TextView) findViewById(R.id.perm_steps_t)).setText("Couldn't open Health Connect (" + t.getClass().getSimpleName() + ").");
-            }
-        });
+        findViewById(R.id.perm_steps_b).setOnClickListener(v -> connectSteps());
+    }
+
+    /** Ask Health Connect for steps; if its screen doesn't come up, open its settings page for this app instead. */
+    private void connectSteps() {
+        TextView t = findViewById(R.id.perm_steps_t);
+        int st;
+        try { st = StepsHC.status(this); } catch (Throwable e) { t.setText("Health Connect isn't available on this phone."); return; }
+        if (st == androidx.health.connect.client.HealthConnectClient.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
+            t.setText("Health Connect needs installing or updating first. Opening the Play Store…");
+            try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.google.android.apps.healthdata&url=healthconnect%3A%2F%2Fonboarding"))); } catch (Exception ignored) {}
+            return;
+        }
+        if (st != androidx.health.connect.client.HealthConnectClient.SDK_AVAILABLE) { t.setText("Health Connect isn't available on this phone."); return; }
+        if (StepsHC.granted(this)) { askBackground(); return; }
+        t.setText("Opening Health Connect…");
+        try { startActivityForResult(StepsHC.permissionIntent(this), 13); }
+        catch (Throwable e) { openStepsSettings(); }
+    }
+
+    private void askBackground() {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= 34 && !StepsHC.grantedBackground(this)) { startActivityForResult(StepsHC.backgroundIntent(this), 14); return; }
+        } catch (Throwable ignored) {}
+        afterExtras(false);
+    }
+
+    private void openStepsSettings() {
+        ((TextView) findViewById(R.id.perm_steps_t)).setText("Health Connect didn't show its permission screen, so here's its settings page: turn on Steps for Tracker Widgets, then come back.");
+        try { startActivity(StepsHC.settingsIntent(this)); }
+        catch (Throwable e) {
+            try { startActivity(new Intent("androidx.health.ACTION_HEALTH_CONNECT_SETTINGS")); }
+            catch (Throwable e2) { ((TextView) findViewById(R.id.perm_steps_t)).setText("Open Settings → Health Connect → App permissions → Tracker Widgets, and allow Steps."); }
+        }
     }
 
     @Override
@@ -70,7 +96,9 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
-        if (req == 13) afterExtras(false);
+        // Steps allowed: then (optionally) reading in the background, so the widget updates on its own.
+        if (req == 13) { if (StepsHC.granted(this)) askBackground(); else openStepsSettings(); }
+        if (req == 14) afterExtras(false);
     }
 
     /** Refresh the phone's widgets right away (steps read fine while this screen is open), then redraw. */

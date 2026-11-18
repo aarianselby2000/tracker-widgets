@@ -23,7 +23,9 @@ object StepsHC {
     private const val BACKGROUND = "android.permission.health.READ_HEALTH_DATA_IN_BACKGROUND"
     private val READ = HealthPermission.getReadPermission(StepsRecord::class)
 
-    @JvmField val PERMISSIONS: Set<String> = setOf(READ, BACKGROUND)
+    // Steps are asked for on their own: asking for background reading in the same request can make Health Connect
+    // turn the whole request down without showing anything on phones that don't offer it.
+    @JvmField val PERMISSIONS: Set<String> = setOf(READ)
 
     @JvmStatic fun status(c: Context): Int = HealthConnectClient.getSdkStatus(c)
 
@@ -31,6 +33,19 @@ object StepsHC {
 
     @JvmStatic fun permissionIntent(c: Context): Intent =
         PermissionController.createRequestPermissionResultContract().createIntent(c, PERMISSIONS)
+
+    @JvmStatic fun backgroundIntent(c: Context): Intent =
+        PermissionController.createRequestPermissionResultContract().createIntent(c, setOf(BACKGROUND))
+
+    @JvmStatic fun grantedBackground(c: Context): Boolean = try {
+        available(c) && runBlocking { HealthConnectClient.getOrCreate(c).permissionController.getGrantedPermissions().contains(BACKGROUND) }
+    } catch (e: Exception) { false }
+
+    /** Health Connect's page for this app's permissions (or its main settings on older phones). */
+    @JvmStatic fun settingsIntent(c: Context): Intent =
+        if (android.os.Build.VERSION.SDK_INT >= 34)
+            Intent("android.health.connect.action.MANAGE_HEALTH_PERMISSIONS").putExtra(Intent.EXTRA_PACKAGE_NAME, c.packageName)
+        else Intent(HealthConnectClient.ACTION_HEALTH_CONNECT_SETTINGS)
 
     @JvmStatic fun granted(c: Context): Boolean = try {
         available(c) && runBlocking { HealthConnectClient.getOrCreate(c).permissionController.getGrantedPermissions().contains(READ) }
